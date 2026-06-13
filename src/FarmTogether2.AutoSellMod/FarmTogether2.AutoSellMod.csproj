@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>FarmTogether2.AutoSellMod</AssemblyName>
+    <Product>FarmTogether2.AutoSellMod</Product>
+    <Version>1.0.0</Version>
+    <BepInExPluginGuid>com.abmcar.farmtogether2.autosellmod</BepInExPluginGuid>
+    <BepInExPluginName>FarmTogether2.AutoSellMod</BepInExPluginName>
+    <BepInExPluginVersion>$(Version)</BepInExPluginVersion>
+
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>annotations</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RestoreAdditionalProjectSources>https://api.nuget.org/v3/index.json;https://nuget.bepinex.dev/v3/index.json</RestoreAdditionalProjectSources>
+
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <DebugType>portable</DebugType>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.755" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(BepInExInteropDir)')">
+    <Reference Include="$(BepInExInteropDir)/*.dll">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="RequireInterop" BeforeTargets="ResolveReferences"
+          Condition="!Exists('$(BepInExInteropDir)')">
+    <Error Text="'$(BepInExInteropDir)' not found. AutoSell references Farm Together 2 game types, so install BepInEx and launch Farm Together 2 once to generate interop assemblies before building." />
+  </Target>
+
+  <Target Name="CopyToGame" AfterTargets="Build"
+          Condition="'$(GameDir)' != '' And Exists('$(GameDir)')">
+    <PropertyGroup>
+      <PluginInstallDir>$(BepInExPluginsDir)/$(AssemblyName)</PluginInstallDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(PluginInstallDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginInstallDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="$(PluginInstallDir)"
+          Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" OverwriteReadOnlyFiles="true" />
+    <Message Importance="high" Text="Deployed $(AssemblyName).dll -> $(PluginInstallDir)" />
+  </Target>
+
+</Project>
