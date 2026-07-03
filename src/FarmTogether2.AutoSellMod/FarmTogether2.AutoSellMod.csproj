@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.755" />
-    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.1.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(BepInExInteropDir)')">
@@ -35,18 +35,6 @@
   <Target Name="RequireInterop" BeforeTargets="ResolveReferences"
           Condition="!Exists('$(BepInExInteropDir)')">
     <Error Text="'$(BepInExInteropDir)' not found. AutoSell references Farm Together 2 game types, so install BepInEx and launch Farm Together 2 once to generate interop assemblies before building." />
-  </Target>
-
-  <Target Name="CopyToGame" AfterTargets="Build"
-          Condition="'$(GameDir)' != '' And Exists('$(GameDir)')">
-    <PropertyGroup>
-      <PluginInstallDir>$(BepInExPluginsDir)/$(AssemblyName)</PluginInstallDir>
-    </PropertyGroup>
-    <MakeDir Directories="$(PluginInstallDir)" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PluginInstallDir)" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" />
-    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="$(PluginInstallDir)"
-          Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" OverwriteReadOnlyFiles="true" />
-    <Message Importance="high" Text="Deployed $(AssemblyName).dll -> $(PluginInstallDir)" />
   </Target>
 
 </Project>

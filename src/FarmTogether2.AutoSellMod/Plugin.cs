@@ -39,7 +39,7 @@ namespace FarmTogether2.AutoSellMod
                 "Master switch for automatic resource selling.");
             CheckIntervalSeconds = Config.Bind("General", "CheckIntervalSeconds", 5.0f,
                 "How often to scan inventory and town shops, in real-time seconds.");
-            TriggerRatio = Config.Bind("Sell", "TriggerRatio", 0.90f,
+            TriggerRatio = Config.Bind("Sell", "TriggerRatio", 0.80f,
                 "Sell resource excess when Amount / MaxValue is at or above this ratio. Clamped to 0.01..0.999.");
             ExcludedResources = Config.Bind("Sell", "ExcludedResources", "Event,EventB,GoldNugget",
                 "Comma/semicolon/space separated FarmResourceType names that should never be auto-sold.");
@@ -73,7 +73,7 @@ namespace FarmTogether2.AutoSellMod
             {
                 float value = TriggerRatio.Value;
                 if (float.IsNaN(value) || float.IsInfinity(value))
-                    value = 0.90f;
+                    value = 0.80f;
                 return Mathf.Clamp(value, 0.01f, 0.999f);
             }
         }
@@ -133,7 +133,17 @@ namespace FarmTogether2.AutoSellMod
         private float _nextCheck;
         private float _lastWarnAt = -999f;
         private float _popupUntil;
-        private string _popupText = "";
+        // Set once if even a basic IMGUI label throws (e.g. "Method unstripping failed" after a game
+        // update) so we stop re-throwing every frame. The sell logic does not depend on this.
+        private static bool _guiUnsupported;
+        // One-time probe of which IMGUI primitives Il2CppInterop could actually unstrip on this build,
+        // so we render the popup with only the parts that work (the 2026-06-15 update broke GUI.set_color).
+        private static bool _guiProbed;
+        private static bool _canColor;     // GUI.color get/set works
+        private static bool _canTexture;   // GUI.DrawTexture works
+        private static bool _canStyle;     // new GUIStyle(GUI.skin.label) works
+        private string _popupDetail = "";
+        private string _popupSubtext = "";
         private readonly bool[] _offeredByOpenShop = new bool[(int)FarmResourceType.Count];
         private readonly bool[] _soldThisScan = new bool[(int)FarmResourceType.Count];
 
@@ -288,10 +298,13 @@ namespace FarmTogether2.AutoSellMod
                 shop.SellResources(player, resourceSlotIndex, interactionCount);
 
                 long soldAmount = amountPerInteraction * interactionCount;
-                string message = $"AutoSell: sold {soldAmount} {resourceType} ({interactionCount} trade(s), {FormatMoneyPlain(earnedMoney)})";
+                long projectedAmount = Math.Max(0, currentAmount - soldAmount);
+                string logMessage = $"Sold {soldAmount} {resourceType} with {interactionCount} interaction(s), earned {FormatMoneyPlain(earnedMoney)}. {currentAmount}/{maxValue} -> {projectedAmount}/{maxValue}.";
+                string popupDetail = $"{resourceType}: -{soldAmount}  {FormatMoneyPlain(earnedMoney)}";
+                string popupSubtext = $"{interactionCount} trade(s) x {amountPerInteraction} | Storage {currentAmount}->{projectedAmount}/{maxValue} | Trigger {FormatRatio(triggerRatio)}";
                 MarkSold(resourceType);
-                ShowPopup(message);
-                Plugin.Debug($"[autosell] Sold {soldAmount} {resourceType} with {interactionCount} interaction(s), earned {FormatMoneyPlain(earnedMoney)}. {currentAmount}/{maxValue} -> target {targetAmount}.");
+                ShowPopup(logMessage, popupDetail, popupSubtext);
+                Plugin.Debug($"[autosell] {logMessage} Target {targetAmount}.");
             }
         }
 
@@ -357,6 +370,11 @@ namespace FarmTogether2.AutoSellMod
             return parts.Count == 0 ? "+0" : "+" + string.Join(", ", parts);
         }
 
+        private static string FormatRatio(float ratio)
+        {
+            return $"{Mathf.RoundToInt(ratio * 100.0f)}%";
+        }
+
         private static uint ToInteractionCount(long value)
         {
             if (value <= 0)
@@ -376,14 +394,15 @@ namespace FarmTogether2.AutoSellMod
             Plugin.Log.LogWarning(message);
         }
 
-        private void ShowPopup(string message)
+        private void ShowPopup(string logMessage, string detail, string subtext)
         {
-            Plugin.Log.LogInfo($"[autosell] {message}");
+            Plugin.Log.LogInfo($"[autosell] {logMessage}");
 
             if (!Plugin.ShowSellPopup.Value)
                 return;
 
-            _popupText = message;
+            _popupDetail = detail;
+            _popupSubtext = subtext;
             _popupUntil = Time.realtimeSinceStartup + Plugin.PopupSeconds;
         }
 
@@ -393,14 +412,111 @@ namespace FarmTogether2.AutoSellMod
                 return;
             if (Time.realtimeSinceStartup > _popupUntil)
                 return;
-            if (string.IsNullOrEmpty(_popupText))
+            if (string.IsNullOrEmpty(_popupDetail))
+                return;
+            if (_guiUnsupported)
                 return;
 
-            var style = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold };
-            style.normal.textColor = Color.black;
-            GUI.Label(new Rect(22, 62, 980, 40), _popupText, style);
-            style.normal.textColor = Color.white;
-            GUI.Label(new Rect(20, 60, 980, 40), _popupText, style);
+            if (!_guiProbed)
+                ProbeGuiCapabilities();
+
+            try
+            {
+                float screenWidth = Screen.width;
+                float panelWidth = Mathf.Min(760.0f, screenWidth - 32.0f);
+                if (panelWidth < 320.0f)
+                    panelWidth = Mathf.Max(240.0f, screenWidth - 16.0f);
+
+                const float panelHeight = 104.0f;
+                float x = Mathf.Max(8.0f, (screenWidth - panelWidth) * 0.5f);
+                var panelRect = new Rect(x, 72.0f, panelWidth, panelHeight);
+
+                // Decorative box — only if BOTH the texture draw and the colour setter survived unstripping.
+                if (_canTexture && _canColor)
+                {
+                    Color originalColor = GUI.color;
+                    try
+                    {
+                        GUI.color = new Color(0.02f, 0.02f, 0.02f, 0.78f);
+                        GUI.DrawTexture(panelRect, Texture2D.whiteTexture);
+                        GUI.color = new Color(1.0f, 0.72f, 0.18f, 0.96f);
+                        GUI.DrawTexture(new Rect(panelRect.x, panelRect.y, 6.0f, panelRect.height), Texture2D.whiteTexture);
+                    }
+                    finally
+                    {
+                        GUI.color = originalColor;
+                    }
+                }
+
+                float textX = panelRect.x + 20.0f;
+                float textWidth = panelRect.width - 32.0f;
+
+                // Text is the actual notification. Styled labels if GUIStyle works; otherwise plain labels
+                // (default skin) so the message still shows on a build where styling can't be unstripped.
+                if (_canStyle)
+                {
+                    var titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+                    titleStyle.normal.textColor = new Color(1.0f, 0.82f, 0.36f, 1.0f);
+                    var detailStyle = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft, wordWrap = true };
+                    detailStyle.normal.textColor = Color.white;
+                    var subtextStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.UpperLeft, wordWrap = true };
+                    subtextStyle.normal.textColor = new Color(0.86f, 0.90f, 0.94f, 1.0f);
+                    // No background box is possible (GUI.DrawTexture can't be unstripped on this build), so
+                    // give every line a near-black OUTLINE — draws the text in black around an 8-point ring,
+                    // then the coloured text on top — so it stays readable over the busy farm background.
+                    DrawOutlinedLabel(new Rect(textX, panelRect.y + 8.0f, textWidth, 22.0f), "AUTO SELL MOD", titleStyle);
+                    DrawOutlinedLabel(new Rect(textX, panelRect.y + 32.0f, textWidth, 32.0f), _popupDetail, detailStyle);
+                    DrawOutlinedLabel(new Rect(textX, panelRect.y + 68.0f, textWidth, 30.0f), _popupSubtext, subtextStyle);
+                }
+                else
+                {
+                    GUI.Label(new Rect(textX, panelRect.y + 8.0f, textWidth, 22.0f), "AUTO SELL MOD");
+                    GUI.Label(new Rect(textX, panelRect.y + 32.0f, textWidth, 40.0f), _popupDetail);
+                    GUI.Label(new Rect(textX, panelRect.y + 74.0f, textWidth, 30.0f), _popupSubtext);
+                }
+            }
+            catch (Exception e)
+            {
+                // Even basic labels failed to unstrip → disable the popup for this session (no per-frame
+                // spam) instead of throwing thousands of times. The auto-sell logic is unaffected.
+                _guiUnsupported = true;
+                Plugin.Log.LogWarning($"[autosell] Sell popup disabled this session: IMGUI unavailable after game update " +
+                                      $"({e.GetType().Name}: {e.Message}). Set ShowSellPopup=false to silence permanently.");
+            }
+        }
+
+        // Text outline offsets (8-point ring) — fake a readable backdrop without GUI.DrawTexture.
+        private static readonly Vector2[] _outlineOffsets =
+        {
+            new Vector2(-1.6f, -1.6f), new Vector2(0f, -1.8f), new Vector2(1.6f, -1.6f),
+            new Vector2(-1.8f, 0f),                            new Vector2(1.8f, 0f),
+            new Vector2(-1.6f, 1.6f),  new Vector2(0f, 1.8f),  new Vector2(1.6f, 1.6f),
+        };
+
+        // Draw `text` with a near-black outline so it reads over any background. Uses only GUI.Label +
+        // GUIStyle.textColor (both unstrip fine on this build); no textures.
+        private static void DrawOutlinedLabel(Rect r, string text, GUIStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+            Color textColor = style.normal.textColor;
+            style.normal.textColor = new Color(0f, 0f, 0f, 0.92f);
+            for (int i = 0; i < _outlineOffsets.Length; i++)
+                GUI.Label(new Rect(r.x + _outlineOffsets[i].x, r.y + _outlineOffsets[i].y, r.width, r.height), text, style);
+            style.normal.textColor = textColor;
+            GUI.Label(r, text, style);
+        }
+
+        // Probe ONCE which IMGUI primitives Il2CppInterop managed to unstrip on this build. Each call is
+        // isolated so one failure (e.g. GUI.set_color after the 2026-06-15 update) doesn't mask the others.
+        // Must run inside OnGUI (these are GUI calls); the off-screen DrawTexture probe is harmless.
+        private static void ProbeGuiCapabilities()
+        {
+            _guiProbed = true;
+            try { Color c = GUI.color; GUI.color = c; _canColor = true; } catch { _canColor = false; }
+            try { GUI.DrawTexture(new Rect(-100f, -100f, 1f, 1f), Texture2D.whiteTexture); _canTexture = true; } catch { _canTexture = false; }
+            try { var _ = new GUIStyle(GUI.skin.label); _canStyle = true; } catch { _canStyle = false; }
+            Plugin.Log.LogInfo($"[autosell] popup IMGUI capabilities: color={_canColor} texture={_canTexture} style={_canStyle}");
         }
     }
 }
