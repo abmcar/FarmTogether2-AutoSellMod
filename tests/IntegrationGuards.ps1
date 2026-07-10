@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param()
 
@@ -19,5 +19,21 @@ Assert-Contains '_sellCandidates\.Sort\(CompareSellCandidates\)' 'AutoSell must 
 Assert-Contains 'AutoSellPolicy\.GetCurrencyPriority' 'AutoSell must rank native FarmMoney through the policy.'
 Assert-Contains 'AutoSellPolicy\.CalculateInteractionCount' 'AutoSell must use the tested interaction calculation.'
 Assert-Contains 'candidate\.Shop\.SellResources' 'AutoSell must execute the selected native shop candidate.'
+
+$project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj')
+$readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
+
+if ($project -notmatch '<Version>1\.1\.0</Version>') {
+    throw 'AutoSell feature release must be version 1.1.0.'
+}
+if ($readme -notmatch '奖章.*钻石.*金币') {
+    throw 'README must document AutoSell currency priority.'
+}
+if ($readme -notmatch '活动车') {
+    throw 'README must document Event Shack support.'
+}
+if ($readme -notmatch '`ExcludedResources`.*`GoldNugget`') {
+    throw 'README must document the new exclusion default.'
+}
 
 Write-Host '[autosell-integration-guards] OK'
