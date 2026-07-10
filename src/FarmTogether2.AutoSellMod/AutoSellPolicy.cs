@@ -22,6 +22,7 @@ namespace FarmTogether2.AutoSellMod
 
     internal static class AutoSellPolicy
     {
+        internal const int LegacyExclusionMigrationVersion = 1;
         internal const int CurrentMigrationVersion = 1;
 
         private static readonly char[] ExclusionSeparators =
@@ -73,19 +74,27 @@ namespace FarmTogether2.AutoSellMod
             string? raw,
             int migrationVersion)
         {
-            string excludedResources = raw ?? "";
-            if (migrationVersion >= CurrentMigrationVersion)
-            {
-                return new ExclusionMigrationDecision(
-                    excludedResources,
-                    migrationVersion,
-                    excludedResourcesChanged: false);
-            }
+            return DecideExclusionMigration(
+                raw,
+                migrationVersion,
+                CurrentMigrationVersion);
+        }
 
-            bool migrateLegacyDefault = ShouldMigrateLegacyExclusions(excludedResources);
+        internal static ExclusionMigrationDecision DecideExclusionMigration(
+            string? raw,
+            int migrationVersion,
+            int currentMigrationVersion)
+        {
+            string excludedResources = raw ?? "";
+            bool migrateLegacyDefault =
+                migrationVersion < LegacyExclusionMigrationVersion
+                && ShouldMigrateLegacyExclusions(excludedResources);
+            int nextMigrationVersion = Math.Max(
+                migrationVersion,
+                currentMigrationVersion);
             return new ExclusionMigrationDecision(
                 migrateLegacyDefault ? "GoldNugget" : excludedResources,
-                CurrentMigrationVersion,
+                nextMigrationVersion,
                 migrateLegacyDefault);
         }
 

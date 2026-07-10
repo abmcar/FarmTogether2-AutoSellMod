@@ -31,6 +31,17 @@ Assert-Contains $plugin 'AutoSellPolicy\.GetCurrencyPriority' 'AutoSell must ran
 Assert-Contains $plugin 'AutoSellPolicy\.CalculateInteractionCount' 'AutoSell must use the tested interaction calculation.'
 Assert-Contains $plugin 'candidate\.Shop\.SellResources' 'AutoSell must execute the selected native shop candidate.'
 
+$migrateLegacyExcludedResources = [regex]::Match(
+    $plugin,
+    '(?s)private void MigrateLegacyExcludedResources\(\).*?(?=\r?\n\s*internal static HashSet<FarmResourceType> GetExcludedResources\()')
+if (-not $migrateLegacyExcludedResources.Success) {
+    Add-GuardFailure 'AutoSell integration guard could not isolate MigrateLegacyExcludedResources.'
+}
+else {
+    Assert-Contains $migrateLegacyExcludedResources.Value 'ConfigSchemaVersion\.Value\s*=\s*decision\.MigrationVersion\s*;' 'MigrateLegacyExcludedResources must persist the migration decision marker.'
+    Assert-Contains $migrateLegacyExcludedResources.Value 'if\s*\(\s*configChanged\s*\)\s*Config\.Save\(\)\s*;' 'MigrateLegacyExcludedResources must save config when migration state changes.'
+}
+
 $trySellCandidate = [regex]::Match(
     $plugin,
     '(?s)private void TrySellCandidate\(.*?(?=\r?\n\s*private void ClearScanFlags\()')
