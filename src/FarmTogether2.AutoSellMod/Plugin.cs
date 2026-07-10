@@ -168,8 +168,6 @@ namespace FarmTogether2.AutoSellMod
             internal readonly long AmountPerInteraction;
             internal readonly int GoodIndex;
             internal readonly FarmMoney MoneyPerInteraction;
-            internal readonly int CurrencyPriority;
-            internal readonly int DiscoveryOrder;
 
             internal SellCandidate(
                 TownShopInstance shop,
@@ -177,9 +175,7 @@ namespace FarmTogether2.AutoSellMod
                 FarmResourceType resourceType,
                 long amountPerInteraction,
                 int goodIndex,
-                FarmMoney moneyPerInteraction,
-                int currencyPriority,
-                int discoveryOrder)
+                FarmMoney moneyPerInteraction)
             {
                 Shop = shop;
                 ResourceSlotIndex = resourceSlotIndex;
@@ -187,8 +183,6 @@ namespace FarmTogether2.AutoSellMod
                 AmountPerInteraction = amountPerInteraction;
                 GoodIndex = goodIndex;
                 MoneyPerInteraction = moneyPerInteraction;
-                CurrencyPriority = currencyPriority;
-                DiscoveryOrder = discoveryOrder;
             }
         }
 
@@ -208,7 +202,8 @@ namespace FarmTogether2.AutoSellMod
         private string _popupSubtext = "";
         private readonly bool[] _offeredByOpenShop = new bool[(int)FarmResourceType.Count];
         private readonly bool[] _soldThisScan = new bool[(int)FarmResourceType.Count];
-        private readonly List<SellCandidate> _sellCandidates = new List<SellCandidate>();
+        private readonly AutoSellDispatcher<SellCandidate> _dispatcher =
+            new AutoSellDispatcher<SellCandidate>();
 
         public AutoSellBehaviour(IntPtr ptr) : base(ptr) { }
 
@@ -252,8 +247,7 @@ namespace FarmTogether2.AutoSellMod
                 return;
 
             ClearScanFlags();
-            _sellCandidates.Clear();
-            int discoveryOrder = 0;
+            _dispatcher.Clear();
 
             for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
             {
@@ -267,7 +261,7 @@ namespace FarmTogether2.AutoSellMod
 
                 try
                 {
-                    CollectCandidatesFromShop(farm, player, shop, ref discoveryOrder);
+                    CollectCandidatesFromShop(farm, player, shop);
                 }
                 catch (Exception e)
                 {
@@ -275,19 +269,9 @@ namespace FarmTogether2.AutoSellMod
                 }
             }
 
-            _sellCandidates.Sort(CompareSellCandidates);
-
-            for (int i = 0; i < _sellCandidates.Count; i++)
-            {
-                try
-                {
-                    TrySellCandidate(farm, player, _sellCandidates[i]);
-                }
-                catch (Exception e)
-                {
-                    WarnThrottled($"[autosell] Candidate sale failed: {e.GetType().Name}: {e.Message}");
-                }
-            }
+            _dispatcher.ExecuteCandidates(
+                candidate => TrySellCandidate(farm, player, candidate),
+                e => WarnThrottled($"[autosell] Candidate sale failed: {e.GetType().Name}: {e.Message}"));
 
             LogResourcesWithoutShop(farm);
         }
@@ -295,8 +279,7 @@ namespace FarmTogether2.AutoSellMod
         private void CollectCandidatesFromShop(
             FarmData farm,
             LocalPlayer player,
-            TownShopInstance shop,
-            ref int discoveryOrder)
+            TownShopInstance shop)
         {
             TownShopDefinition definition = shop.Definition;
             if (definition == null || definition.ShopResources == null)
@@ -306,43 +289,40 @@ namespace FarmTogether2.AutoSellMod
             if (!farm.IsTownShopOpen(player, definition, out failReason))
                 return;
 
-            for (int resourceSlotIndex = 0;
-                 resourceSlotIndex < definition.ShopResources.Count;
-                 resourceSlotIndex++)
-            {
-                var shopResource = definition.ShopResources[resourceSlotIndex];
-                if (shopResource == null)
-                    continue;
+            _dispatcher.CollectOffers(
+                definition.ShopResources.Count,
+                resourceSlotIndex => CollectOfferFromShop(shop, definition, resourceSlotIndex),
+                e => WarnThrottled($"[autosell] Shop offer scan failed: {e.GetType().Name}: {e.Message}"));
+        }
 
-                FarmResource tradeResource = shopResource.Resource;
-                FarmResourceType resourceType = tradeResource.Type;
-                MarkOfferedByOpenShop(resourceType);
+        private AutoSellOffer<SellCandidate>? CollectOfferFromShop(
+            TownShopInstance shop,
+            TownShopDefinition definition,
+            int resourceSlotIndex)
+        {
+            var shopResource = definition.ShopResources[resourceSlotIndex];
+            if (shopResource == null)
+                return null;
 
-                FarmMoney money = shop.GetSellMoney_Resource(resourceSlotIndex);
-                int priority = AutoSellPolicy.GetCurrencyPriority(
-                    money.Coins,
-                    money.Bills,
-                    money.Medals);
+            FarmResource tradeResource = shopResource.Resource;
+            FarmResourceType resourceType = tradeResource.Type;
+            MarkOfferedByOpenShop(resourceType);
 
-                _sellCandidates.Add(new SellCandidate(
+            FarmMoney money = shop.GetSellMoney_Resource(resourceSlotIndex);
+            int priority = AutoSellPolicy.GetCurrencyPriority(
+                money.Coins,
+                money.Bills,
+                money.Medals);
+
+            return new AutoSellOffer<SellCandidate>(
+                new SellCandidate(
                     shop,
                     resourceSlotIndex,
                     resourceType,
                     tradeResource.Amount,
                     shopResource.GoodIndex,
-                    money,
-                    priority,
-                    discoveryOrder++));
-            }
-        }
-
-        private static int CompareSellCandidates(SellCandidate left, SellCandidate right)
-        {
-            return AutoSellPolicy.CompareOffers(
-                left.CurrencyPriority,
-                left.DiscoveryOrder,
-                right.CurrencyPriority,
-                right.DiscoveryOrder);
+                    money),
+                priority);
         }
 
         private void TrySellCandidate(
