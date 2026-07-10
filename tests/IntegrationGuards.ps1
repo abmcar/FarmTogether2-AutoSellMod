@@ -38,6 +38,7 @@ Assert-Contains $trySellCandidate.Value 'candidate\.Shop\.GetRemainingUses\(cand
 $project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
 $deployScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts/build-deploy-autosell.ps1')
+$solution = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'FarmTogether2.Mods.sln')
 
 if ($project -notmatch '<Version>1\.1\.0</Version>') {
     throw 'AutoSell feature release must be version 1.1.0.'
@@ -53,6 +54,9 @@ if ($readme -notmatch '活动车') {
 }
 if ($readme -notmatch '`ExcludedResources`.*`GoldNugget`') {
     throw 'README must document the new exclusion default.'
+}
+if ($solution -notmatch 'tests\\AutoSellMod\.Tests\\FarmTogether2\.AutoSellMod\.Tests\.csproj') {
+    throw 'FarmTogether2.Mods.sln must include the AutoSell test project.'
 }
 
 Write-Host '[autosell-integration-guards] OK'
