@@ -55,8 +55,9 @@ public sealed class AutoSellPolicyTests
         ExclusionMigrationDecision decision =
             AutoSellPolicy.DecideExclusionMigration("Event,EventB,GoldNugget", migrationVersion: 0);
 
+        Assert.Equal(1, AutoSellPolicy.CurrentMigrationVersion);
         Assert.Equal("GoldNugget", decision.ExcludedResources);
-        Assert.Equal(AutoSellPolicy.CurrentMigrationVersion, decision.MigrationVersion);
+        Assert.Equal(1, decision.MigrationVersion);
         Assert.True(decision.ExcludedResourcesChanged);
     }
 

@@ -6,10 +6,15 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $plugin = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/Plugin.cs')
 $dispatcher = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/AutoSellDispatcher.cs')
+$guardFailures = [System.Collections.Generic.List[string]]::new()
+
+function Add-GuardFailure([string]$message) {
+    [void]$script:guardFailures.Add($message)
+}
 
 function Assert-Contains([string]$source, [string]$pattern, [string]$message) {
     if ($source -notmatch $pattern) {
-        throw $message
+        Add-GuardFailure $message
     }
 }
 
@@ -30,10 +35,12 @@ $trySellCandidate = [regex]::Match(
     $plugin,
     '(?s)private void TrySellCandidate\(.*?(?=\r?\n\s*private void ClearScanFlags\()')
 if (-not $trySellCandidate.Success) {
-    throw 'AutoSell integration guard could not isolate TrySellCandidate.'
+    Add-GuardFailure 'AutoSell integration guard could not isolate TrySellCandidate.'
 }
-Assert-Contains $trySellCandidate.Value 'farm\.GetResource\(candidate\.ResourceType\)' 'TrySellCandidate must re-read farm storage for every candidate.'
-Assert-Contains $trySellCandidate.Value 'candidate\.Shop\.GetRemainingUses\(candidate\.GoodIndex\)' 'TrySellCandidate must re-read remaining shop uses for every candidate.'
+else {
+    Assert-Contains $trySellCandidate.Value 'farm\.GetResource\(candidate\.ResourceType\)' 'TrySellCandidate must re-read farm storage for every candidate.'
+    Assert-Contains $trySellCandidate.Value 'candidate\.Shop\.GetRemainingUses\(candidate\.GoodIndex\)' 'TrySellCandidate must re-read remaining shop uses for every candidate.'
+}
 
 $project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
@@ -41,22 +48,27 @@ $deployScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts/buil
 $solution = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'FarmTogether2.Mods.sln')
 
 if ($project -notmatch '<Version>1\.1\.0</Version>') {
-    throw 'AutoSell feature release must be version 1.1.0.'
+    Add-GuardFailure 'AutoSell feature release must be version 1.1.0.'
 }
 if ($deployScript -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.0\]') {
-    throw 'AutoSell deploy verification must reference version 1.1.0.'
+    Add-GuardFailure 'AutoSell deploy verification must reference version 1.1.0.'
 }
 if ($readme -notmatch '奖章.*钻石.*金币') {
-    throw 'README must document AutoSell currency priority.'
+    Add-GuardFailure 'README must document AutoSell currency priority.'
 }
 if ($readme -notmatch '活动车') {
-    throw 'README must document Event Shack support.'
+    Add-GuardFailure 'README must document Event Shack support.'
 }
 if ($readme -notmatch '`ExcludedResources`.*`GoldNugget`') {
-    throw 'README must document the new exclusion default.'
+    Add-GuardFailure 'README must document the new exclusion default.'
 }
 if ($solution -notmatch 'tests\\AutoSellMod\.Tests\\FarmTogether2\.AutoSellMod\.Tests\.csproj') {
-    throw 'FarmTogether2.Mods.sln must include the AutoSell test project.'
+    Add-GuardFailure 'FarmTogether2.Mods.sln must include the AutoSell test project.'
+}
+
+if ($guardFailures.Count -gt 0) {
+    $details = ($guardFailures | ForEach-Object { " - $_" }) -join [Environment]::NewLine
+    throw "AutoSell integration guards failed:$([Environment]::NewLine)$details"
 }
 
 Write-Host '[autosell-integration-guards] OK'
