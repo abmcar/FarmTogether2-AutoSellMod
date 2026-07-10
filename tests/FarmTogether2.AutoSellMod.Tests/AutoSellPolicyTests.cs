@@ -50,6 +50,45 @@ public sealed class AutoSellPolicyTests
     }
 
     [Fact]
+    public void FirstLoadMigratesLegacyDefaultAndMarksMigrationComplete()
+    {
+        ExclusionMigrationDecision decision =
+            AutoSellPolicy.DecideExclusionMigration("Event,EventB,GoldNugget", migrationVersion: 0);
+
+        Assert.Equal("GoldNugget", decision.ExcludedResources);
+        Assert.Equal(AutoSellPolicy.CurrentMigrationVersion, decision.MigrationVersion);
+        Assert.True(decision.ExcludedResourcesChanged);
+    }
+
+    [Theory]
+    [InlineData("GoldNugget")]
+    [InlineData("GoldNugget,Spice")]
+    public void FirstLoadPreservesNonLegacyExclusionsAndMarksMigrationComplete(string raw)
+    {
+        ExclusionMigrationDecision decision =
+            AutoSellPolicy.DecideExclusionMigration(raw, migrationVersion: 0);
+
+        Assert.Equal(raw, decision.ExcludedResources);
+        Assert.Equal(AutoSellPolicy.CurrentMigrationVersion, decision.MigrationVersion);
+        Assert.False(decision.ExcludedResourcesChanged);
+    }
+
+    [Fact]
+    public void CompletedMigrationPreservesReintroducedEventExclusionsOnSecondLoad()
+    {
+        ExclusionMigrationDecision firstLoad =
+            AutoSellPolicy.DecideExclusionMigration("Event,EventB,GoldNugget", migrationVersion: 0);
+        const string userExclusions = "Event,EventB,GoldNugget";
+
+        ExclusionMigrationDecision secondLoad =
+            AutoSellPolicy.DecideExclusionMigration(userExclusions, firstLoad.MigrationVersion);
+
+        Assert.Equal(userExclusions, secondLoad.ExcludedResources);
+        Assert.Equal(AutoSellPolicy.CurrentMigrationVersion, secondLoad.MigrationVersion);
+        Assert.False(secondLoad.ExcludedResourcesChanged);
+    }
+
+    [Fact]
     public void InteractionCountSellsOnlyExcessAndRespectsRemainingUses()
     {
         Assert.Equal(

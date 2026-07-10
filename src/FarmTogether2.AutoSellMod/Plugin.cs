@@ -23,6 +23,7 @@ namespace FarmTogether2.AutoSellMod
         internal static ConfigEntry<float> CheckIntervalSeconds = null!;
         internal static ConfigEntry<float> TriggerRatio = null!;
         internal static ConfigEntry<string> ExcludedResources = null!;
+        internal static ConfigEntry<int> ConfigSchemaVersion = null!;
         internal static ConfigEntry<bool> SellOneTradeWhenFull = null!;
         internal static ConfigEntry<bool> ShowSellPopup = null!;
         internal static ConfigEntry<float> SellPopupSeconds = null!;
@@ -43,6 +44,8 @@ namespace FarmTogether2.AutoSellMod
                 "Sell resource excess when Amount / MaxValue is at or above this ratio. Clamped to 0.01..0.999.");
             ExcludedResources = Config.Bind("Sell", "ExcludedResources", "GoldNugget",
                 "Comma/semicolon/space separated FarmResourceType names that should never be auto-sold. Event and EventB are allowed by default for the Event Shack.");
+            ConfigSchemaVersion = Config.Bind("Migration", "ConfigSchemaVersion", 0,
+                "Internal config migration version. Do not edit manually.");
             MigrateLegacyExcludedResources();
             SellOneTradeWhenFull = Config.Bind("Sell", "SellOneTradeWhenFull", true,
                 "If storage is full but the excess above TriggerRatio is smaller than one shop trade, sell one trade anyway.");
@@ -92,15 +95,28 @@ namespace FarmTogether2.AutoSellMod
 
         private void MigrateLegacyExcludedResources()
         {
-            string raw = ExcludedResources.Value ?? "";
-            if (!AutoSellPolicy.ShouldMigrateLegacyExclusions(raw))
-                return;
+            ExclusionMigrationDecision decision = AutoSellPolicy.DecideExclusionMigration(
+                ExcludedResources.Value,
+                ConfigSchemaVersion.Value);
+            bool configChanged = false;
 
-            ExcludedResources.Value = "GoldNugget";
-            _excludedResourcesRaw = "";
-            _excludedResourcesCache = null;
-            Config.Save();
-            Log.LogInfo("[autosell] Migrated legacy ExcludedResources default so Event Shack resources can be sold.");
+            if (decision.ExcludedResourcesChanged)
+            {
+                ExcludedResources.Value = decision.ExcludedResources;
+                _excludedResourcesRaw = "";
+                _excludedResourcesCache = null;
+                configChanged = true;
+                Log.LogInfo("[autosell] Migrated legacy ExcludedResources default so Event Shack resources can be sold.");
+            }
+
+            if (ConfigSchemaVersion.Value != decision.MigrationVersion)
+            {
+                ConfigSchemaVersion.Value = decision.MigrationVersion;
+                configChanged = true;
+            }
+
+            if (configChanged)
+                Config.Save();
         }
 
         internal static HashSet<FarmResourceType> GetExcludedResources()

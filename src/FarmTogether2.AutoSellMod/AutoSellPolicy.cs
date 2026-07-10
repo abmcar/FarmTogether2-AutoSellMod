@@ -3,8 +3,27 @@ using System.Collections.Generic;
 
 namespace FarmTogether2.AutoSellMod
 {
+    internal readonly struct ExclusionMigrationDecision
+    {
+        internal ExclusionMigrationDecision(
+            string excludedResources,
+            int migrationVersion,
+            bool excludedResourcesChanged)
+        {
+            ExcludedResources = excludedResources;
+            MigrationVersion = migrationVersion;
+            ExcludedResourcesChanged = excludedResourcesChanged;
+        }
+
+        internal string ExcludedResources { get; }
+        internal int MigrationVersion { get; }
+        internal bool ExcludedResourcesChanged { get; }
+    }
+
     internal static class AutoSellPolicy
     {
+        internal const int CurrentMigrationVersion = 1;
+
         private static readonly char[] ExclusionSeparators =
             { ',', ';', ' ', '\t', '\r', '\n' };
 
@@ -48,6 +67,26 @@ namespace FarmTogether2.AutoSellMod
                 && values.Contains("Event")
                 && values.Contains("EventB")
                 && values.Contains("GoldNugget");
+        }
+
+        internal static ExclusionMigrationDecision DecideExclusionMigration(
+            string? raw,
+            int migrationVersion)
+        {
+            string excludedResources = raw ?? "";
+            if (migrationVersion >= CurrentMigrationVersion)
+            {
+                return new ExclusionMigrationDecision(
+                    excludedResources,
+                    migrationVersion,
+                    excludedResourcesChanged: false);
+            }
+
+            bool migrateLegacyDefault = ShouldMigrateLegacyExclusions(excludedResources);
+            return new ExclusionMigrationDecision(
+                migrateLegacyDefault ? "GoldNugget" : excludedResources,
+                CurrentMigrationVersion,
+                migrateLegacyDefault);
         }
 
         internal static uint CalculateInteractionCount(

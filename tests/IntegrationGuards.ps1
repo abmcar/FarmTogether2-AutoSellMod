@@ -6,19 +6,22 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $plugin = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/Plugin.cs')
 
-function Assert-Contains([string]$pattern, [string]$message) {
-    if ($plugin -notmatch $pattern) {
+function Assert-Contains([string]$source, [string]$pattern, [string]$message) {
+    if ($source -notmatch $pattern) {
         throw $message
     }
 }
 
-Assert-Contains 'ExcludedResources.*"GoldNugget"' 'AutoSell must enable Event resources by default.'
-Assert-Contains 'MigrateLegacyExcludedResources\(\)' 'AutoSell must migrate the legacy default exclusion set.'
-Assert-Contains 'CollectCandidatesFromShop' 'AutoSell must collect shop candidates before selling.'
-Assert-Contains '_sellCandidates\.Sort\(CompareSellCandidates\)' 'AutoSell must sort collected candidates.'
-Assert-Contains 'AutoSellPolicy\.GetCurrencyPriority' 'AutoSell must rank native FarmMoney through the policy.'
-Assert-Contains 'AutoSellPolicy\.CalculateInteractionCount' 'AutoSell must use the tested interaction calculation.'
-Assert-Contains 'candidate\.Shop\.SellResources' 'AutoSell must execute the selected native shop candidate.'
+Assert-Contains $plugin 'ExcludedResources.*"GoldNugget"' 'AutoSell must enable Event resources by default.'
+Assert-Contains $plugin 'MigrateLegacyExcludedResources\(\)' 'AutoSell must migrate the legacy default exclusion set.'
+Assert-Contains $plugin 'ConfigEntry<int>\s+ConfigSchemaVersion' 'AutoSell must persist a config schema migration marker.'
+Assert-Contains $plugin 'Config\.Bind\("Migration",\s*"ConfigSchemaVersion",\s*0' 'AutoSell schema marker must default to version 0.'
+Assert-Contains $plugin '(?s)AutoSellPolicy\.DecideExclusionMigration\(\s*ExcludedResources\.Value,\s*ConfigSchemaVersion\.Value\)' 'AutoSell plugin must use the tested exclusion migration decision.'
+Assert-Contains $plugin 'CollectCandidatesFromShop' 'AutoSell must collect shop candidates before selling.'
+Assert-Contains $plugin '_sellCandidates\.Sort\(CompareSellCandidates\)' 'AutoSell must sort collected candidates.'
+Assert-Contains $plugin 'AutoSellPolicy\.GetCurrencyPriority' 'AutoSell must rank native FarmMoney through the policy.'
+Assert-Contains $plugin 'AutoSellPolicy\.CalculateInteractionCount' 'AutoSell must use the tested interaction calculation.'
+Assert-Contains $plugin 'candidate\.Shop\.SellResources' 'AutoSell must execute the selected native shop candidate.'
 
 $project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
