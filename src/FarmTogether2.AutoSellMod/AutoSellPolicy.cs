@@ -1,7 +1,13 @@
+using System;
+using System.Collections.Generic;
+
 namespace FarmTogether2.AutoSellMod
 {
     internal static class AutoSellPolicy
     {
+        private static readonly char[] ExclusionSeparators =
+            { ',', ';', ' ', '\t', '\r', '\n' };
+
         internal static int GetCurrencyPriority(long coins, long bills, long medals)
         {
             if (medals > 0)
@@ -23,6 +29,64 @@ namespace FarmTogether2.AutoSellMod
             return priorityComparison != 0
                 ? priorityComparison
                 : leftOrder.CompareTo(rightOrder);
+        }
+
+        internal static bool ShouldMigrateLegacyExclusions(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return false;
+
+            var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string token in raw.Split(
+                ExclusionSeparators,
+                StringSplitOptions.RemoveEmptyEntries))
+            {
+                values.Add(token.Trim());
+            }
+
+            return values.Count == 3
+                && values.Contains("Event")
+                && values.Contains("EventB")
+                && values.Contains("GoldNugget");
+        }
+
+        internal static uint CalculateInteractionCount(
+            long currentAmount,
+            long maxValue,
+            double triggerRatio,
+            long amountPerInteraction,
+            uint remainingUses,
+            bool sellOneWhenFull)
+        {
+            if (currentAmount <= 0
+                || maxValue <= 0
+                || amountPerInteraction <= 0
+                || remainingUses == 0
+                || double.IsNaN(triggerRatio)
+                || double.IsInfinity(triggerRatio)
+                || triggerRatio <= 0.0
+                || triggerRatio >= 1.0)
+            {
+                return 0;
+            }
+
+            if (currentAmount / (double)maxValue < triggerRatio)
+                return 0;
+
+            long targetAmount = (long)Math.Floor(maxValue * triggerRatio);
+            long excessAmount = currentAmount - targetAmount;
+            long possibleInteractions = excessAmount / amountPerInteraction;
+
+            if (possibleInteractions == 0 && sellOneWhenFull && currentAmount >= maxValue)
+                possibleInteractions = 1;
+
+            if (possibleInteractions <= 0)
+                return 0;
+
+            uint count = possibleInteractions >= uint.MaxValue
+                ? uint.MaxValue
+                : (uint)possibleInteractions;
+            return count > remainingUses ? remainingUses : count;
         }
     }
 }

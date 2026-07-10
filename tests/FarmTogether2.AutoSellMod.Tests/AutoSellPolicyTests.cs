@@ -28,4 +28,91 @@ public sealed class AutoSellPolicyTests
         Assert.True(AutoSellPolicy.CompareOffers(2, 7, 2, 4) > 0);
         Assert.Equal(0, AutoSellPolicy.CompareOffers(1, 5, 1, 5));
     }
+
+    [Theory]
+    [InlineData("Event,EventB,GoldNugget")]
+    [InlineData("goldnugget; eventb EVENT")]
+    [InlineData(" Event\r\nGoldNugget\tEventB ")]
+    public void LegacyDefaultExclusionsAreRecognized(string raw)
+    {
+        Assert.True(AutoSellPolicy.ShouldMigrateLegacyExclusions(raw));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("GoldNugget")]
+    [InlineData("Event,EventB,GoldNugget,Spice")]
+    [InlineData("Event,GoldNugget")]
+    public void CustomizedExclusionsAreNotMigrated(string? raw)
+    {
+        Assert.False(AutoSellPolicy.ShouldMigrateLegacyExclusions(raw));
+    }
+
+    [Fact]
+    public void InteractionCountSellsOnlyExcessAndRespectsRemainingUses()
+    {
+        Assert.Equal(
+            2u,
+            AutoSellPolicy.CalculateInteractionCount(850, 1000, 0.80, 20, 2, false));
+    }
+
+    [Fact]
+    public void FullStorageCanForceOneTrade()
+    {
+        Assert.Equal(
+            1u,
+            AutoSellPolicy.CalculateInteractionCount(100, 100, 0.95, 10, 5, true));
+        Assert.Equal(
+            0u,
+            AutoSellPolicy.CalculateInteractionCount(100, 100, 0.95, 10, 5, false));
+    }
+
+    [Fact]
+    public void PreferredOfferCapacityFallsBackWithoutCrossingTarget()
+    {
+        var offers = new[]
+        {
+            new Offer(Priority: 1, Order: 0, AmountPerInteraction: 10, RemainingUses: 100),
+            new Offer(Priority: 3, Order: 1, AmountPerInteraction: 150, RemainingUses: 1),
+            new Offer(Priority: 2, Order: 2, AmountPerInteraction: 10, RemainingUses: 100),
+        };
+
+        System.Array.Sort(
+            offers,
+            (left, right) => AutoSellPolicy.CompareOffers(
+                left.Priority,
+                left.Order,
+                right.Priority,
+                right.Order));
+
+        long currentAmount = 1000;
+        var executed = new System.Collections.Generic.List<(int Order, uint Count)>();
+
+        foreach (Offer offer in offers)
+        {
+            uint count = AutoSellPolicy.CalculateInteractionCount(
+                currentAmount,
+                maxValue: 1000,
+                triggerRatio: 0.80,
+                offer.AmountPerInteraction,
+                offer.RemainingUses,
+                sellOneWhenFull: false);
+
+            if (count == 0)
+                continue;
+
+            executed.Add((offer.Order, count));
+            currentAmount -= offer.AmountPerInteraction * count;
+        }
+
+        Assert.Equal(new[] { (Order: 1, Count: 1u), (Order: 2, Count: 5u) }, executed);
+        Assert.Equal(800, currentAmount);
+    }
+
+    private readonly record struct Offer(
+        int Priority,
+        int Order,
+        long AmountPerInteraction,
+        uint RemainingUses);
 }
