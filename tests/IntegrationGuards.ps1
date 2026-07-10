@@ -22,9 +22,13 @@ Assert-Contains 'candidate\.Shop\.SellResources' 'AutoSell must execute the sele
 
 $project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
+$deployScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts/build-deploy-autosell.ps1')
 
 if ($project -notmatch '<Version>1\.1\.0</Version>') {
     throw 'AutoSell feature release must be version 1.1.0.'
+}
+if ($deployScript -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.0\]') {
+    throw 'AutoSell deploy verification must reference version 1.1.0.'
 }
 if ($readme -notmatch '奖章.*钻石.*金币') {
     throw 'README must document AutoSell currency priority.'
