@@ -23,6 +23,7 @@ namespace FarmTogether2.AutoSellMod
         internal static ConfigEntry<float> CheckIntervalSeconds = null!;
         internal static ConfigEntry<float> TriggerRatio = null!;
         internal static ConfigEntry<string> ExcludedResources = null!;
+        internal static ConfigEntry<int> ConfigSchemaVersion = null!;
         internal static ConfigEntry<bool> SellOneTradeWhenFull = null!;
         internal static ConfigEntry<bool> ShowSellPopup = null!;
         internal static ConfigEntry<float> SellPopupSeconds = null!;
@@ -41,8 +42,11 @@ namespace FarmTogether2.AutoSellMod
                 "How often to scan inventory and town shops, in real-time seconds.");
             TriggerRatio = Config.Bind("Sell", "TriggerRatio", 0.80f,
                 "Sell resource excess when Amount / MaxValue is at or above this ratio. Clamped to 0.01..0.999.");
-            ExcludedResources = Config.Bind("Sell", "ExcludedResources", "Event,EventB,GoldNugget",
-                "Comma/semicolon/space separated FarmResourceType names that should never be auto-sold.");
+            ExcludedResources = Config.Bind("Sell", "ExcludedResources", "GoldNugget",
+                "Comma/semicolon/space separated FarmResourceType names that should never be auto-sold. Event and EventB are allowed by default for the Event Shack.");
+            ConfigSchemaVersion = Config.Bind("Migration", "ConfigSchemaVersion", 0,
+                "Internal config migration version. Do not edit manually.");
+            MigrateLegacyExcludedResources();
             SellOneTradeWhenFull = Config.Bind("Sell", "SellOneTradeWhenFull", true,
                 "If storage is full but the excess above TriggerRatio is smaller than one shop trade, sell one trade anyway.");
             ShowSellPopup = Config.Bind("UI", "ShowSellPopup", true,
@@ -89,6 +93,32 @@ namespace FarmTogether2.AutoSellMod
             }
         }
 
+        private void MigrateLegacyExcludedResources()
+        {
+            ExclusionMigrationDecision decision = AutoSellPolicy.DecideExclusionMigration(
+                ExcludedResources.Value,
+                ConfigSchemaVersion.Value);
+            bool configChanged = false;
+
+            if (decision.ExcludedResourcesChanged)
+            {
+                ExcludedResources.Value = decision.ExcludedResources;
+                _excludedResourcesRaw = "";
+                _excludedResourcesCache = null;
+                configChanged = true;
+                Log.LogInfo("[autosell] Migrated legacy ExcludedResources default so Event Shack resources can be sold.");
+            }
+
+            if (ConfigSchemaVersion.Value != decision.MigrationVersion)
+            {
+                ConfigSchemaVersion.Value = decision.MigrationVersion;
+                configChanged = true;
+            }
+
+            if (configChanged)
+                Config.Save();
+        }
+
         internal static HashSet<FarmResourceType> GetExcludedResources()
         {
             string raw = ExcludedResources.Value ?? "";
@@ -130,6 +160,32 @@ namespace FarmTogether2.AutoSellMod
 
     public sealed class AutoSellBehaviour : MonoBehaviour
     {
+        private sealed class SellCandidate
+        {
+            internal readonly TownShopInstance Shop;
+            internal readonly int ResourceSlotIndex;
+            internal readonly FarmResourceType ResourceType;
+            internal readonly long AmountPerInteraction;
+            internal readonly int GoodIndex;
+            internal readonly FarmMoney MoneyPerInteraction;
+
+            internal SellCandidate(
+                TownShopInstance shop,
+                int resourceSlotIndex,
+                FarmResourceType resourceType,
+                long amountPerInteraction,
+                int goodIndex,
+                FarmMoney moneyPerInteraction)
+            {
+                Shop = shop;
+                ResourceSlotIndex = resourceSlotIndex;
+                ResourceType = resourceType;
+                AmountPerInteraction = amountPerInteraction;
+                GoodIndex = goodIndex;
+                MoneyPerInteraction = moneyPerInteraction;
+            }
+        }
+
         private float _nextCheck;
         private float _lastWarnAt = -999f;
         private float _popupUntil;
@@ -146,6 +202,8 @@ namespace FarmTogether2.AutoSellMod
         private string _popupSubtext = "";
         private readonly bool[] _offeredByOpenShop = new bool[(int)FarmResourceType.Count];
         private readonly bool[] _soldThisScan = new bool[(int)FarmResourceType.Count];
+        private readonly AutoSellDispatcher<SellCandidate> _dispatcher =
+            new AutoSellDispatcher<SellCandidate>();
 
         public AutoSellBehaviour(IntPtr ptr) : base(ptr) { }
 
@@ -189,6 +247,7 @@ namespace FarmTogether2.AutoSellMod
                 return;
 
             ClearScanFlags();
+            _dispatcher.Clear();
 
             for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
             {
@@ -202,110 +261,155 @@ namespace FarmTogether2.AutoSellMod
 
                 try
                 {
-                    TrySellFromShop(farm, player, shop);
+                    CollectCandidatesFromShop(farm, player, shop, slotIndex);
                 }
                 catch (Exception e)
                 {
-                    WarnThrottled($"[autosell] Shop scan failed: {e.GetType().Name}: {e.Message}");
+                    WarnThrottled($"[autosell] Shop scan failed at town slot {slotIndex}: {e}");
                 }
             }
+
+            _dispatcher.ExecuteCandidates(
+                candidate => TrySellCandidate(farm, player, candidate),
+                e => WarnThrottled($"[autosell] Candidate sale failed: {e.GetType().Name}: {e.Message}"));
 
             LogResourcesWithoutShop(farm);
         }
 
-        private void TrySellFromShop(FarmData farm, LocalPlayer player, TownShopInstance shop)
+        private void CollectCandidatesFromShop(
+            FarmData farm,
+            LocalPlayer player,
+            TownShopInstance shop,
+            int townSlotIndex)
         {
             TownShopDefinition definition = shop.Definition;
             if (definition == null || definition.ShopResources == null)
                 return;
 
-            FailedAction failReason;
-            if (!farm.IsTownShopOpen(player, definition, out failReason))
+            bool canScanShop = AutoSellShopAccessPolicy.CanScanShop(
+                player.Permissions == PlayerPermissions.Full,
+                () =>
+                {
+                    FailedAction failReason;
+                    return farm.IsTownShopOpen(player, definition, out failReason);
+                },
+                e => WarnThrottled($"[autosell] Shop open check failed at town slot {townSlotIndex}: {e}"));
+            if (!canScanShop)
+                return;
+
+            _dispatcher.CollectOffers(
+                definition.ShopResources.Count,
+                resourceSlotIndex => CollectOfferFromShop(shop, definition, resourceSlotIndex),
+                e => WarnThrottled($"[autosell] Shop offer scan failed at town slot {townSlotIndex}: {e}"));
+        }
+
+        private AutoSellOffer<SellCandidate>? CollectOfferFromShop(
+            TownShopInstance shop,
+            TownShopDefinition definition,
+            int resourceSlotIndex)
+        {
+            var shopResource = definition.ShopResources[resourceSlotIndex];
+            if (shopResource == null)
+                return null;
+
+            FarmResource tradeResource = shopResource.Resource;
+            FarmResourceType resourceType = tradeResource.Type;
+            MarkOfferedByOpenShop(resourceType);
+
+            FarmMoney money = shop.GetSellMoney_Resource(resourceSlotIndex);
+            int priority = AutoSellPolicy.GetCurrencyPriority(
+                money.Coins,
+                money.Bills,
+                money.Medals);
+
+            return new AutoSellOffer<SellCandidate>(
+                new SellCandidate(
+                    shop,
+                    resourceSlotIndex,
+                    resourceType,
+                    tradeResource.Amount,
+                    shopResource.GoodIndex,
+                    money),
+                priority);
+        }
+
+        private void TrySellCandidate(
+            FarmData farm,
+            LocalPlayer player,
+            SellCandidate candidate)
+        {
+            FarmResourceStorage storage = farm.GetResource(candidate.ResourceType);
+            if (storage == null)
+                return;
+
+            long maxValue = storage.MaxValue;
+            long currentAmount = storage.Amount;
+            if (maxValue <= 0 || currentAmount <= 0)
                 return;
 
             float triggerRatio = Plugin.NormalizedTriggerRatio;
+            double currentRatio = currentAmount / (double)maxValue;
+            if (currentRatio < triggerRatio)
+                return;
 
-            for (int resourceSlotIndex = 0; resourceSlotIndex < definition.ShopResources.Count; resourceSlotIndex++)
+            if (Plugin.IsResourceExcluded(candidate.ResourceType))
             {
-                var shopResource = definition.ShopResources[resourceSlotIndex];
-                if (shopResource == null)
-                    continue;
-
-                FarmResource tradeResource = shopResource.Resource;
-                FarmResourceType resourceType = tradeResource.Type;
-                MarkOfferedByOpenShop(resourceType);
-
-                FarmResourceStorage storage = farm.GetResource(resourceType);
-                if (storage == null)
-                    continue;
-
-                long maxValue = storage.MaxValue;
-                long currentAmount = storage.Amount;
-                if (maxValue <= 0 || currentAmount <= 0)
-                    continue;
-
-                double currentRatio = currentAmount / (double)maxValue;
-                if (currentRatio < triggerRatio)
-                    continue;
-
-                if (Plugin.IsResourceExcluded(resourceType))
-                {
-                    Plugin.Debug($"[autosell] {resourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but is excluded by config.");
-                    continue;
-                }
-
-                long amountPerInteraction = tradeResource.Amount;
-                if (amountPerInteraction <= 0)
-                {
-                    Plugin.Debug($"[autosell] {resourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but shop trade amount is {amountPerInteraction}.");
-                    continue;
-                }
-
-                long targetAmount = (long)Math.Floor(maxValue * (double)triggerRatio);
-                long excessAmount = currentAmount - targetAmount;
-                if (excessAmount < amountPerInteraction)
-                {
-                    if (!Plugin.SellOneTradeWhenFull.Value || currentAmount < maxValue)
-                    {
-                        Plugin.Debug($"[autosell] {resourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but excess {excessAmount} is less than one trade ({amountPerInteraction}).");
-                        continue;
-                    }
-
-                    Plugin.Debug($"[autosell] {resourceType} is full at {currentAmount}/{maxValue}; selling one trade even though excess {excessAmount} is less than one trade ({amountPerInteraction}).");
-                }
-
-                long possibleInteractions = excessAmount / amountPerInteraction;
-                if (possibleInteractions == 0 && Plugin.SellOneTradeWhenFull.Value && currentAmount >= maxValue)
-                    possibleInteractions = 1;
-                uint interactionCount = ToInteractionCount(possibleInteractions);
-                if (interactionCount == 0)
-                    continue;
-
-                uint remainingUses = shop.GetRemainingUses(shopResource.GoodIndex);
-                if (remainingUses == 0)
-                {
-                    Plugin.Debug($"[autosell] {resourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but shop good index {shopResource.GoodIndex} has 0 remaining uses.");
-                    continue;
-                }
-
-                if (interactionCount > remainingUses)
-                    interactionCount = remainingUses;
-                if (interactionCount == 0)
-                    continue;
-
-                FarmMoney earnedMoney = shop.GetSellMoney_Resource(resourceSlotIndex) * (float)interactionCount;
-
-                shop.SellResources(player, resourceSlotIndex, interactionCount);
-
-                long soldAmount = amountPerInteraction * interactionCount;
-                long projectedAmount = Math.Max(0, currentAmount - soldAmount);
-                string logMessage = $"Sold {soldAmount} {resourceType} with {interactionCount} interaction(s), earned {FormatMoneyPlain(earnedMoney)}. {currentAmount}/{maxValue} -> {projectedAmount}/{maxValue}.";
-                string popupDetail = $"{resourceType}: -{soldAmount}  {FormatMoneyPlain(earnedMoney)}";
-                string popupSubtext = $"{interactionCount} trade(s) x {amountPerInteraction} | Storage {currentAmount}->{projectedAmount}/{maxValue} | Trigger {FormatRatio(triggerRatio)}";
-                MarkSold(resourceType);
-                ShowPopup(logMessage, popupDetail, popupSubtext);
-                Plugin.Debug($"[autosell] {logMessage} Target {targetAmount}.");
+                Plugin.Debug($"[autosell] {candidate.ResourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but is excluded by config.");
+                return;
             }
+
+            long amountPerInteraction = candidate.AmountPerInteraction;
+            if (amountPerInteraction <= 0)
+            {
+                Plugin.Debug($"[autosell] {candidate.ResourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but shop trade amount is {amountPerInteraction}.");
+                return;
+            }
+
+            long targetAmount = (long)Math.Floor(maxValue * (double)triggerRatio);
+            long excessAmount = currentAmount - targetAmount;
+            bool forceOneTrade = excessAmount < amountPerInteraction
+                && Plugin.SellOneTradeWhenFull.Value
+                && currentAmount >= maxValue;
+
+            if (excessAmount < amountPerInteraction && !forceOneTrade)
+            {
+                Plugin.Debug($"[autosell] {candidate.ResourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but excess {excessAmount} is less than one trade ({amountPerInteraction}).");
+                return;
+            }
+
+            if (forceOneTrade)
+            {
+                Plugin.Debug($"[autosell] {candidate.ResourceType} is full at {currentAmount}/{maxValue}; selling one trade even though excess {excessAmount} is less than one trade ({amountPerInteraction}).");
+            }
+
+            uint remainingUses = candidate.Shop.GetRemainingUses(candidate.GoodIndex);
+            if (remainingUses == 0)
+            {
+                Plugin.Debug($"[autosell] {candidate.ResourceType} is {currentAmount}/{maxValue} ({currentRatio:P0}) but shop good index {candidate.GoodIndex} has 0 remaining uses.");
+                return;
+            }
+
+            uint interactionCount = AutoSellPolicy.CalculateInteractionCount(
+                currentAmount,
+                maxValue,
+                triggerRatio,
+                amountPerInteraction,
+                remainingUses,
+                Plugin.SellOneTradeWhenFull.Value);
+            if (interactionCount == 0)
+                return;
+
+            FarmMoney earnedMoney = candidate.MoneyPerInteraction * (float)interactionCount;
+            candidate.Shop.SellResources(player, candidate.ResourceSlotIndex, interactionCount);
+
+            long soldAmount = amountPerInteraction * interactionCount;
+            long projectedAmount = Math.Max(0, currentAmount - soldAmount);
+            string logMessage = $"Sold {soldAmount} {candidate.ResourceType} with {interactionCount} interaction(s), earned {FormatMoneyPlain(earnedMoney)}. {currentAmount}/{maxValue} -> {projectedAmount}/{maxValue}.";
+            string popupDetail = $"{candidate.ResourceType}: -{soldAmount}  {FormatMoneyPlain(earnedMoney)}";
+            string popupSubtext = $"{interactionCount} trade(s) x {amountPerInteraction} | Storage {currentAmount}->{projectedAmount}/{maxValue} | Trigger {FormatRatio(triggerRatio)}";
+            MarkSold(candidate.ResourceType);
+            ShowPopup(logMessage, popupDetail, popupSubtext);
+            Plugin.Debug($"[autosell] {logMessage} Target {targetAmount}.");
         }
 
         private void ClearScanFlags()
@@ -373,15 +477,6 @@ namespace FarmTogether2.AutoSellMod
         private static string FormatRatio(float ratio)
         {
             return $"{Mathf.RoundToInt(ratio * 100.0f)}%";
-        }
-
-        private static uint ToInteractionCount(long value)
-        {
-            if (value <= 0)
-                return 0;
-            if (value >= uint.MaxValue)
-                return uint.MaxValue;
-            return (uint)value;
         }
 
         private void WarnThrottled(string message)
