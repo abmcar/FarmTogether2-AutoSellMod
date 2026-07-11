@@ -13,5 +13,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <Compile Include="..\..\src\AutoSellMod\AutoSellDispatcher.cs" Link="AutoSellDispatcher.cs" />
     <Compile Include="..\..\src\AutoSellMod\AutoSellPolicy.cs" Link="AutoSellPolicy.cs" />
+    <Compile Include="..\..\src\AutoSellMod\AutoSellShopAccessPolicy.cs" Link="AutoSellShopAccessPolicy.cs" />
   </ItemGroup>
 </Project>
