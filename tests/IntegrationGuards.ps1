@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $plugin = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/Plugin.cs')
 $dispatcher = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/AutoSellDispatcher.cs')
+$shopAccessPolicy = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/AutoSellMod/AutoSellShopAccessPolicy.cs')
 $guardFailures = [System.Collections.Generic.List[string]]::new()
 
 function Add-GuardFailure([string]$message) {
@@ -30,6 +31,11 @@ Assert-Contains $plugin '(?s)private void ScanAndSell\(\).*?_dispatcher\.Execute
 Assert-Contains $plugin 'AutoSellPolicy\.GetCurrencyPriority' 'AutoSell must rank native FarmMoney through the policy.'
 Assert-Contains $plugin 'AutoSellPolicy\.CalculateInteractionCount' 'AutoSell must use the tested interaction calculation.'
 Assert-Contains $plugin 'candidate\.Shop\.SellResources' 'AutoSell must execute the selected native shop candidate.'
+Assert-Contains $shopAccessPolicy 'class\s+AutoSellShopAccessPolicy' 'AutoSell must provide a game-independent shop access policy.'
+Assert-Contains $plugin 'AutoSellShopAccessPolicy\.CanScanShop' 'AutoSell shop collection must use the tested shop access policy.'
+Assert-Contains $plugin 'player\.Permissions\s*==\s*PlayerPermissions\.Full' 'AutoSell must bypass the native shop-open check only for full permissions.'
+Assert-Contains $plugin '(?s)CollectCandidatesFromShop\(\s*FarmData farm,\s*LocalPlayer player,\s*TownShopInstance shop,\s*int townSlotIndex\s*\)' 'AutoSell shop collection must carry the town slot index into native-boundary diagnostics.'
+Assert-Contains $plugin 'Shop open check failed at town slot \{townSlotIndex\}: \{e\}' 'AutoSell must log the slot and full exception for a native shop-open failure.'
 
 $migrateLegacyExcludedResources = [regex]::Match(
     $plugin,

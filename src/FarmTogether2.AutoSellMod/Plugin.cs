@@ -261,11 +261,11 @@ namespace FarmTogether2.AutoSellMod
 
                 try
                 {
-                    CollectCandidatesFromShop(farm, player, shop);
+                    CollectCandidatesFromShop(farm, player, shop, slotIndex);
                 }
                 catch (Exception e)
                 {
-                    WarnThrottled($"[autosell] Shop scan failed: {e.GetType().Name}: {e.Message}");
+                    WarnThrottled($"[autosell] Shop scan failed at town slot {slotIndex}: {e}");
                 }
             }
 
@@ -279,20 +279,28 @@ namespace FarmTogether2.AutoSellMod
         private void CollectCandidatesFromShop(
             FarmData farm,
             LocalPlayer player,
-            TownShopInstance shop)
+            TownShopInstance shop,
+            int townSlotIndex)
         {
             TownShopDefinition definition = shop.Definition;
             if (definition == null || definition.ShopResources == null)
                 return;
 
-            FailedAction failReason;
-            if (!farm.IsTownShopOpen(player, definition, out failReason))
+            bool canScanShop = AutoSellShopAccessPolicy.CanScanShop(
+                player.Permissions == PlayerPermissions.Full,
+                () =>
+                {
+                    FailedAction failReason;
+                    return farm.IsTownShopOpen(player, definition, out failReason);
+                },
+                e => WarnThrottled($"[autosell] Shop open check failed at town slot {townSlotIndex}: {e}"));
+            if (!canScanShop)
                 return;
 
             _dispatcher.CollectOffers(
                 definition.ShopResources.Count,
                 resourceSlotIndex => CollectOfferFromShop(shop, definition, resourceSlotIndex),
-                e => WarnThrottled($"[autosell] Shop offer scan failed: {e.GetType().Name}: {e.Message}"));
+                e => WarnThrottled($"[autosell] Shop offer scan failed at town slot {townSlotIndex}: {e}"));
         }
 
         private AutoSellOffer<SellCandidate>? CollectOfferFromShop(
