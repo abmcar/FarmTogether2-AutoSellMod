@@ -64,11 +64,14 @@ $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
 $deployScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts/build-deploy-autosell.ps1')
 $solution = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'FarmTogether2.Mods.sln')
 
-if ($project -notmatch '<Version>1\.1\.0</Version>') {
-    Add-GuardFailure 'AutoSell feature release must be version 1.1.0.'
+if ($project -notmatch '<Version>1\.1\.1</Version>') {
+    Add-GuardFailure 'AutoSell repair release must be version 1.1.1.'
 }
-if ($deployScript -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.0\]') {
-    Add-GuardFailure 'AutoSell deploy verification must reference version 1.1.0.'
+if ($deployScript -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.1\]') {
+    Add-GuardFailure 'AutoSell deploy verification must reference version 1.1.1.'
+}
+if ($readme -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.1\]') {
+    Add-GuardFailure 'README load verification must reference AutoSell version 1.1.1.'
 }
 if ($readme -notmatch '奖章.*钻石.*金币') {
     Add-GuardFailure 'README must document AutoSell currency priority.'
