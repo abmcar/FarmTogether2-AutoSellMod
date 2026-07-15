@@ -26,7 +26,7 @@ $project = Read-Text 'src/FarmTogether2.AutoSellMod/FarmTogether2.AutoSellMod.cs
 $testProject = Read-Text 'tests/FarmTogether2.AutoSellMod.Tests/FarmTogether2.AutoSellMod.Tests.csproj'
 
 Assert-Match $plugin 'finally\s*\{\s*GUI\.color = originalColor;' 'AutoSell popup must restore GUI.color in a finally block.'
-Assert-Match $project '<Version>1\.1\.1</Version>' 'AutoSell project version must remain 1.1.1.'
+Assert-Match $project '<Version>1\.1\.3</Version>' 'AutoSell project version must remain 1.1.3.'
 Assert-Match $project '<BepInExPluginGuid>com\.abmcar\.farmtogether2\.autosellmod</BepInExPluginGuid>' 'AutoSell plugin GUID changed unexpectedly.'
 Assert-NoMatch $project '<Target Name="CopyToGame"' 'AutoSell project must not embed a game deployment target.'
 Assert-NoMatch $project 'D:/SteamLibrary|D:\\SteamLibrary' 'AutoSell project must not contain a machine-specific Steam path.'

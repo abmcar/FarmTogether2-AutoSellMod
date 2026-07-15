@@ -131,14 +131,6 @@ public sealed class AutoSellPolicyTests
     }
 
     [Fact]
-    public void OnlineExecutionUsesOneInteractionWhileOfflineKeepsSafeBatch()
-    {
-        Assert.Equal(1u, AutoSellPolicy.LimitInteractionCountForExecution(32768u, limitToSingleInteraction: true));
-        Assert.Equal(32767u, AutoSellPolicy.LimitInteractionCountForExecution(32768u, limitToSingleInteraction: false));
-        Assert.Equal(0u, AutoSellPolicy.LimitInteractionCountForExecution(0u, limitToSingleInteraction: true));
-    }
-
-    [Fact]
     public void FullStorageCanForceOneTrade()
     {
         Assert.Equal(

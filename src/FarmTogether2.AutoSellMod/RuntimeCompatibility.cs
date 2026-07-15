@@ -18,11 +18,11 @@ namespace FarmTogether2.AutoSellMod
 
     internal static class RuntimeCompatibility
     {
-        internal const string SupportedSteamBuild = "24069957";
+        internal const string SupportedSteamBuild = "24184988";
         internal const string ExpectedGameAssemblySha256 =
-            "72b6e96a73b931dafaf96f2fbbb29ac5f1c4723916d5baf6d2e01ace1c703309";
+            "f5a611e417f46c60371d27f999e77bcedee4fc00d6062836c9d6682d52535f29";
         internal const string ExpectedGlobalMetadataSha256 =
-            "b80a90c0681d404cec6f015eae9914c671297912ebf0aad7d8e27c68b7801d2d";
+            "ca87d94ee64b8a8a0ceca8f9c99b9e2226afc97bbc760a14461b673067df3320";
 
         internal static RuntimeCompatibilityResult VerifyCurrentGame(
             string gameRootPath,

@@ -9,12 +9,12 @@ public sealed class RuntimeCompatibilityTests
     [Fact]
     public void CompatibilityConstantsMatchTheVerifiedSteamBuild()
     {
-        Assert.Equal("24069957", RuntimeCompatibility.SupportedSteamBuild);
+        Assert.Equal("24184988", RuntimeCompatibility.SupportedSteamBuild);
         Assert.Equal(
-            "72b6e96a73b931dafaf96f2fbbb29ac5f1c4723916d5baf6d2e01ace1c703309",
+            "f5a611e417f46c60371d27f999e77bcedee4fc00d6062836c9d6682d52535f29",
             RuntimeCompatibility.ExpectedGameAssemblySha256);
         Assert.Equal(
-            "b80a90c0681d404cec6f015eae9914c671297912ebf0aad7d8e27c68b7801d2d",
+            "ca87d94ee64b8a8a0ceca8f9c99b9e2226afc97bbc760a14461b673067df3320",
             RuntimeCompatibility.ExpectedGlobalMetadataSha256);
     }
 
