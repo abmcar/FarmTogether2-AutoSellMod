@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "com.abmcar.farmtogether2.autosellmod",
+  "displayName": "FarmTogether2.AutoSellMod",
+  "assemblyName": "FarmTogether2.AutoSellMod",
+  "version": "1.1.1",
+  "project": "src/FarmTogether2.AutoSellMod/FarmTogether2.AutoSellMod.csproj",
+  "testProjects": [
+    "tests/FarmTogether2.AutoSellMod.Tests/FarmTogether2.AutoSellMod.Tests.csproj"
+  ],
+  "guardScripts": [
+    "tests/RegressionGuards.ps1",
+    "tests/IntegrationGuards.ps1"
+  ],
+  "installReadme": "packaging/README_安装说明.txt",
+  "supportedSteamBuild": "24069957"
+}

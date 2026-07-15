@@ -111,6 +111,33 @@ public sealed class AutoSellPolicyTests
             AutoSellPolicy.CalculateInteractionCount(850, 1000, 0.80, 20, 2, false));
     }
 
+    [Theory]
+    [InlineData(32767, 32767u)]
+    [InlineData(32768, 32767u)]
+    [InlineData(65535, 32767u)]
+    public void InteractionCountNeverExceedsNativeSignedShortTransport(
+        long possibleInteractions,
+        uint expected)
+    {
+        Assert.Equal(
+            expected,
+            AutoSellPolicy.CalculateInteractionCount(
+                currentAmount: possibleInteractions * 2,
+                maxValue: possibleInteractions * 2,
+                triggerRatio: 0.5,
+                amountPerInteraction: 1,
+                remainingUses: uint.MaxValue,
+                sellOneWhenFull: false));
+    }
+
+    [Fact]
+    public void OnlineExecutionUsesOneInteractionWhileOfflineKeepsSafeBatch()
+    {
+        Assert.Equal(1u, AutoSellPolicy.LimitInteractionCountForExecution(32768u, limitToSingleInteraction: true));
+        Assert.Equal(32767u, AutoSellPolicy.LimitInteractionCountForExecution(32768u, limitToSingleInteraction: false));
+        Assert.Equal(0u, AutoSellPolicy.LimitInteractionCountForExecution(0u, limitToSingleInteraction: true));
+    }
+
     [Fact]
     public void FullStorageCanForceOneTrade()
     {
@@ -120,6 +147,20 @@ public sealed class AutoSellPolicyTests
         Assert.Equal(
             0u,
             AutoSellPolicy.CalculateInteractionCount(100, 100, 0.95, 10, 5, false));
+    }
+
+    [Fact]
+    public void FullStorageCannotForceATradeLargerThanTheCurrentResourceAmount()
+    {
+        Assert.Equal(
+            0u,
+            AutoSellPolicy.CalculateInteractionCount(
+                currentAmount: 5,
+                maxValue: 5,
+                triggerRatio: 0.80,
+                amountPerInteraction: 10,
+                remainingUses: 5,
+                sellOneWhenFull: true));
     }
 
     [Fact]

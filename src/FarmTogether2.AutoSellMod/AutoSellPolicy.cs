@@ -24,6 +24,7 @@ namespace FarmTogether2.AutoSellMod
     {
         internal const int LegacyExclusionMigrationVersion = 1;
         internal const int CurrentMigrationVersion = 1;
+        internal const uint MaxNativeInteractionCount = (uint)short.MaxValue;
 
         private static readonly char[] ExclusionSeparators =
             { ',', ';', ' ', '\t', '\r', '\n' };
@@ -125,16 +126,31 @@ namespace FarmTogether2.AutoSellMod
             long excessAmount = currentAmount - targetAmount;
             long possibleInteractions = excessAmount / amountPerInteraction;
 
-            if (possibleInteractions == 0 && sellOneWhenFull && currentAmount >= maxValue)
+            if (possibleInteractions == 0
+                && sellOneWhenFull
+                && currentAmount >= maxValue
+                && currentAmount >= amountPerInteraction)
                 possibleInteractions = 1;
 
             if (possibleInteractions <= 0)
                 return 0;
 
-            uint count = possibleInteractions >= uint.MaxValue
-                ? uint.MaxValue
+            uint count = possibleInteractions >= MaxNativeInteractionCount
+                ? MaxNativeInteractionCount
                 : (uint)possibleInteractions;
             return count > remainingUses ? remainingUses : count;
+        }
+
+        internal static uint LimitInteractionCountForExecution(
+            uint interactionCount,
+            bool limitToSingleInteraction)
+        {
+            uint transportSafeCount = interactionCount > MaxNativeInteractionCount
+                ? MaxNativeInteractionCount
+                : interactionCount;
+            return limitToSingleInteraction && transportSafeCount > 0
+                ? 1u
+                : transportSafeCount;
         }
     }
 }

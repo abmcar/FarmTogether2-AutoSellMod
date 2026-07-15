@@ -3,65 +3,57 @@
 param()
 
 $ErrorActionPreference = 'Stop'
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 function Read-Text([string]$relativePath) {
     Get-Content -Raw -LiteralPath (Join-Path $repoRoot $relativePath)
 }
 
-function Assert-Contains([string]$text, [string]$pattern, [string]$message) {
+function Assert-Match([string]$text, [string]$pattern, [string]$message) {
     if ($text -notmatch $pattern) {
         throw $message
     }
 }
 
-function Assert-NotContains([string]$text, [string]$pattern, [string]$message) {
+function Assert-NoMatch([string]$text, [string]$pattern, [string]$message) {
     if ($text -match $pattern) {
         throw $message
     }
 }
 
-$qol = Read-Text 'src/QoLMod/Plugin.cs'
-$farmhand = Read-Text 'src/FarmhandSpeedMod/Plugin.cs'
-$autoRange = Read-Text 'src/AutoModRangeMod/Plugin.cs'
-$autoSell = Read-Text 'src/AutoSellMod/Plugin.cs'
-$props = Read-Text 'Directory.Build.props'
-$targetsPath = Join-Path $repoRoot 'Directory.Build.targets'
+$plugin = Read-Text 'src/FarmTogether2.AutoSellMod/Plugin.cs'
+$project = Read-Text 'src/FarmTogether2.AutoSellMod/FarmTogether2.AutoSellMod.csproj'
+$testProject = Read-Text 'tests/FarmTogether2.AutoSellMod.Tests/FarmTogether2.AutoSellMod.Tests.csproj'
 
-Assert-Contains $qol 'float\.IsNaN\(value\)' 'QoL Clamp must reject NaN before raw float patching.'
-Assert-Contains $qol 'float\.IsNaN\(v\)' 'QoL ClampMultiplier must reject NaN.'
-Assert-Contains $qol 'PatchFloatResult' 'QoL raw float patch must report success/failure.'
-Assert-Contains $qol '_autoInternalClampPatchActive' 'QoL auto field fallback must depend on actual raw patch success.'
-Assert-NotContains $qol 'AccessTools\.Property\(typeof\(LocalPlayer\), "autoTractor(Speed|SpeedLerp|StartTime)"' 'QoL auto tractor private fields must not be resolved as properties only.'
-Assert-Contains $qol 'AccessTools\.Field\(type, name\)' 'QoL auto tractor private member resolver must check fields.'
+Assert-Match $plugin 'finally\s*\{\s*GUI\.color = originalColor;' 'AutoSell popup must restore GUI.color in a finally block.'
+Assert-Match $project '<Version>1\.1\.1</Version>' 'AutoSell project version must remain 1.1.1.'
+Assert-Match $project '<BepInExPluginGuid>com\.abmcar\.farmtogether2\.autosellmod</BepInExPluginGuid>' 'AutoSell plugin GUID changed unexpectedly.'
+Assert-NoMatch $project '<Target Name="CopyToGame"' 'AutoSell project must not embed a game deployment target.'
+Assert-NoMatch $project 'D:/SteamLibrary|D:\\SteamLibrary' 'AutoSell project must not contain a machine-specific Steam path.'
 
-Assert-Contains $autoRange 'player\.State != Player\.PlayerState\.AutoTractor' 'AutoModRange must require auto-tractor state before widening.'
-Assert-NotContains $autoRange 'manualTractor' 'AutoModRange must not widen manual tractor work paths.'
-
-Assert-Contains $qol 'SharedWorkThrottleBypass\.SetOwner' 'QoL must use shared SkipWorkThrottle ownership.'
-Assert-Contains $farmhand 'SharedWorkThrottleBypass\.SetOwner' 'FarmhandSpeed must use shared SkipWorkThrottle ownership.'
-Assert-NotContains $qol 'Player\.SkipWorkThrottle = want;' 'QoL must not directly overwrite shared SkipWorkThrottle with its local want.'
-Assert-NotContains $farmhand 'Player\.SkipWorkThrottle = want;' 'FarmhandSpeed must not directly overwrite shared SkipWorkThrottle with its local want.'
-
-Assert-Contains $autoSell 'finally\s*\{\s*GUI\.color = originalColor;' 'AutoSell popup must restore GUI.color in a finally block.'
-
-if (-not (Test-Path -LiteralPath $targetsPath)) {
-    throw 'Directory.Build.targets must centralize deploy behavior.'
-}
-
-$targets = Get-Content -Raw -LiteralPath $targetsPath
-Assert-Contains $targets 'DeployToGame' 'Deploy target must be gated by DeployToGame.'
-Assert-Contains $props 'Samboy063\.Cpp2IL\.Core' 'Cpp2IL transitive package must be pinned to a resolvable version.'
-
-foreach ($project in @(
-    'src/QoLMod/FarmTogether2.QoLMod.csproj',
-    'src/AutoSellMod/FarmTogether2.AutoSellMod.csproj',
-    'src/FarmhandSpeedMod/FarmTogether2.FarmhandSpeedMod.csproj',
-    'src/AutoModRangeMod/FarmTogether2.AutoModRangeMod.csproj'
+foreach ($sourceFile in @(
+    'AutoSellAttemptCoordinator.cs',
+    'AutoSellDispatchObservation.cs',
+    'AutoSellDispatcher.cs',
+    'AutoSellPendingTracker.cs',
+    'AutoSellPolicy.cs',
+    'AutoSellRuntimeGate.cs',
+    'AutoSellRuntimeLease.cs',
+    'AutoSellSessionIdentity.cs',
+    'AutoSellShopAccessPolicy.cs',
+    'RuntimeCompatibility.cs'
 )) {
-    $projectText = Read-Text $project
-    Assert-NotContains $projectText '<Target Name="CopyToGame"' "$project must not duplicate CopyToGame target."
+    $escapedFile = [regex]::Escape($sourceFile)
+    Assert-Match $testProject "\.\.\\\.\.\\src\\FarmTogether2\.AutoSellMod\\$escapedFile" "Managed tests must link $sourceFile from the standalone source tree."
 }
+Assert-NoMatch $testProject '\.\.\\\.\.\\src\\AutoSellMod\\' 'Managed tests must not reference the former monorepo source path.'
 
-Write-Host '[review-guards] OK'
+Assert-Match $plugin '(?s)\[HideFromIl2Cpp\]\s*private AutoSellOffer<SellCandidate>\? CollectOfferFromShop' 'Managed candidate collection must be hidden from Il2Cpp method injection.'
+Assert-Match $plugin '(?s)\[HideFromIl2Cpp\]\s*private void TrySellCandidate' 'Managed candidate execution must be hidden from Il2Cpp method injection.'
+Assert-Match $plugin 'public override bool Unload\(\)' 'AutoSell must explicitly clean up its persistent BepInEx component.'
+Assert-Match $plugin 'private AutoSellBehaviour\? _behaviour' 'AutoSell plugin must retain the runtime component handle.'
+Assert-Match $plugin '(?s)private void Update\(\)\s*\{\s*try\s*\{\s*if \(!_runtimeGate\.CanRun\)' 'AutoSell Update must fail closed inside an outer exception boundary after shutdown.'
+Assert-Match $plugin '(?s)private void OnGUI\(\)\s*\{\s*try\s*\{\s*if \(!_runtimeGate\.CanRun\)' 'AutoSell OnGUI must fail closed inside an outer exception boundary after shutdown.'
+Assert-NoMatch $plugin 'TryReleaseForRetry|LateSuccessEventGraceSeconds|\bisRetry\b' 'AutoSell must not automatically retry an uncertain request.'
+
+Write-Output '[autosell-regression-guards] OK'

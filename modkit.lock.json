@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "repository": "abmcar/FarmTogether2-ModKit",
+  "workflowCommit": "f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c",
+  "packageId": "FarmTogether2.GameApi.Ref",
+  "packageVersion": "1.0.1",
+  "releaseTag": "v1.0.1",
+  "assetName": "FarmTogether2.GameApi.Ref.1.0.1.nupkg",
+  "sha256": "186acd3749b85a16101b76446b41eae2b34c627cf06dde44b39e710d954f0bde"
+}

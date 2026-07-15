@@ -11,8 +11,15 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
-    <Compile Include="..\..\src\AutoSellMod\AutoSellDispatcher.cs" Link="AutoSellDispatcher.cs" />
-    <Compile Include="..\..\src\AutoSellMod\AutoSellPolicy.cs" Link="AutoSellPolicy.cs" />
-    <Compile Include="..\..\src\AutoSellMod\AutoSellShopAccessPolicy.cs" Link="AutoSellShopAccessPolicy.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellAttemptCoordinator.cs" Link="AutoSellAttemptCoordinator.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellDispatchObservation.cs" Link="AutoSellDispatchObservation.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellDispatcher.cs" Link="AutoSellDispatcher.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellPendingTracker.cs" Link="AutoSellPendingTracker.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellPolicy.cs" Link="AutoSellPolicy.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellRuntimeGate.cs" Link="AutoSellRuntimeGate.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellRuntimeLease.cs" Link="AutoSellRuntimeLease.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellSessionIdentity.cs" Link="AutoSellSessionIdentity.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\AutoSellShopAccessPolicy.cs" Link="AutoSellShopAccessPolicy.cs" />
+    <Compile Include="..\..\src\FarmTogether2.AutoSellMod\RuntimeCompatibility.cs" Link="RuntimeCompatibility.cs" />
   </ItemGroup>
 </Project>

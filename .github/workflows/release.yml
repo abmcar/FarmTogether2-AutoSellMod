@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable tag to publish
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    uses: abmcar/FarmTogether2-ModKit/.github/workflows/reusable-mod-publish.yml@f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      modkit-commit: f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
+    secrets:
+      modkit_read_token: ${{ secrets.MODKIT_READ_TOKEN }}
