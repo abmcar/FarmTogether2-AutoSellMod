@@ -12,15 +12,200 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: autosell-release-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
+    runs-on: windows-2025
     permissions:
       actions: read
       attestations: read
       contents: write
-    uses: abmcar/FarmTogether2-ModKit/.github/workflows/reusable-mod-publish.yml@f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
-    with:
-      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      modkit-commit: f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
-    secrets:
-      modkit_read_token: ${{ secrets.MODKIT_READ_TOKEN }}
+    steps:
+      - name: Validate release request
+        id: request
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          CALLER_EVENT: ${{ github.event_name }}
+          CALLER_REF: ${{ github.ref }}
+        run: |
+          if ($env:REQUESTED_TAG -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'tag must be a strict stable vMAJOR.MINOR.PATCH tag.'
+          }
+          $validCaller =
+            ($env:CALLER_EVENT -ceq 'push' -and $env:CALLER_REF -ceq "refs/tags/$env:REQUESTED_TAG") -or
+            $env:CALLER_EVENT -ceq 'workflow_dispatch'
+          if (-not $validCaller) {
+            throw 'Release accepts only its tag push or workflow_dispatch recovery.'
+          }
+          "tag=$env:REQUESTED_TAG" >> $env:GITHUB_OUTPUT
+      - name: Check out AutoSell at requested tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ steps.request.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out locked private ModKit bootstrap
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: abmcar/FarmTogether2-ModKit
+          ref: f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
+          token: ${{ secrets.MODKIT_READ_TOKEN }}
+          path: .modkit/bootstrap
+          persist-credentials: false
+      - name: Set up locked .NET SDK
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+      - name: Parse and verify frozen candidate evidence
+        id: evidence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ steps.request.outputs.tag }}
+          MODKIT_COMMIT: f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ((dotnet --version).Trim() -cne '8.0.421') {
+            throw 'Exact .NET SDK 8.0.421 is required.'
+          }
+          $lock = Get-Content -LiteralPath 'modkit.lock.json' -Raw | ConvertFrom-Json
+          if ([string]$lock.workflowCommit -cne $env:MODKIT_COMMIT) {
+            throw 'modkit.lock.json differs from the locked CI commit.'
+          }
+          $bootstrapHead = @(& git -C '.modkit/bootstrap' rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0 -or $bootstrapHead.Count -ne 1 -or $bootstrapHead[0].Trim() -cne $env:MODKIT_COMMIT) {
+            throw 'ModKit bootstrap checkout differs from the locked commit.'
+          }
+          $tagRef = "refs/tags/$env:REQUESTED_TAG"
+          if ((@(& git cat-file -t $tagRef) -join '').Trim() -cne 'tag') {
+            throw 'Release tag must be annotated.'
+          }
+          $tagObject = (@(& git rev-parse $tagRef) -join '').Trim()
+          $commit = (@(& git rev-parse "$env:REQUESTED_TAG^{}") -join '').Trim()
+          $head = (@(& git rev-parse HEAD) -join '').Trim()
+          if ($tagObject -cnotmatch '^[0-9a-f]{40}$' -or $commit -cnotmatch '^[0-9a-f]{40}$' -or $head -cne $commit) {
+            throw 'Annotated tag identity or checkout is invalid.'
+          }
+          $remoteRef = @(& gh api --method GET "repos/$env:REPOSITORY/git/ref/tags/$env:REQUESTED_TAG") -join "`n" | ConvertFrom-Json
+          if ([string]$remoteRef.object.type -cne 'tag' -or [string]$remoteRef.object.sha -cne $tagObject) {
+            throw 'Remote annotated tag differs from the checked out tag.'
+          }
+          $mod = Get-Content -LiteralPath 'mod.json' -Raw | ConvertFrom-Json
+          if ($env:REQUESTED_TAG -cne "v$([string]$mod.version)") {
+            throw 'Release tag differs from mod.json version.'
+          }
+          $message = @(& git for-each-ref '--format=%(contents)' $tagRef) -join "`n"
+          $lines = @($message -split "`r?`n" | Where-Object { $_ -cmatch '^Candidate-' })
+          if ($lines.Count -ne 4) {
+            throw 'Annotated tag must contain exactly four candidate evidence fields.'
+          }
+          function Read-Field([string]$Pattern, [string]$Label) {
+            $matches = @($lines | ForEach-Object { [regex]::Match($_, $Pattern) } | Where-Object Success)
+            if ($matches.Count -ne 1) { throw "Annotated tag has an invalid $Label field." }
+            return $matches[0].Groups[1].Value
+          }
+          $runId = Read-Field '^Candidate-Run-Id: ([1-9][0-9]*)$' 'run id'
+          $artifactId = Read-Field '^Candidate-Artifact-Id: ([1-9][0-9]*)$' 'artifact id'
+          $artifactName = Read-Field '^Candidate-Artifact-Name: ([A-Za-z_][A-Za-z0-9_.]*-candidate-[0-9a-f]{40})$' 'artifact name'
+          $artifactDigest = Read-Field '^Candidate-Artifact-Digest: (sha256:[0-9a-f]{64})$' 'artifact digest'
+          if ($artifactName -cne "$([string]$mod.assemblyName)-candidate-$commit") {
+            throw 'Candidate artifact name differs from the tagged mod identity.'
+          }
+          $run = @(& gh api --method GET "repos/$env:REPOSITORY/actions/runs/$runId") -join "`n" | ConvertFrom-Json
+          if ([string]$run.event -cne 'push' -or [string]$run.head_branch -cne 'main' -or
+              [string]$run.head_sha -cne $commit -or [string]$run.status -cne 'completed' -or
+              [string]$run.conclusion -cne 'success' -or [string]$run.path -cne '.github/workflows/ci.yml') {
+            throw 'Candidate run is not a successful main CI run for the tagged commit.'
+          }
+          $artifact = @(& gh api --method GET "repos/$env:REPOSITORY/actions/artifacts/$artifactId") -join "`n" | ConvertFrom-Json
+          if ([string]$artifact.name -cne $artifactName -or [string]$artifact.digest -cne $artifactDigest -or
+              [bool]$artifact.expired -or [long]$artifact.workflow_run.id -ne [long]$runId -or
+              [string]$artifact.workflow_run.head_sha -cne $commit) {
+            throw 'Candidate artifact metadata differs from annotated evidence.'
+          }
+          "tag-object=$tagObject" >> $env:GITHUB_OUTPUT
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "run-id=$runId" >> $env:GITHUB_OUTPUT
+          "artifact-id=$artifactId" >> $env:GITHUB_OUTPUT
+          "artifact-name=$artifactName" >> $env:GITHUB_OUTPUT
+          "artifact-digest=$artifactDigest" >> $env:GITHUB_OUTPUT
+      - name: Resolve locked ModKit package and tooling
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.MODKIT_READ_TOKEN }}
+        run: |
+          & gh auth setup-git --hostname github.com
+          if ($LASTEXITCODE -ne 0) { throw "ModKit Git authentication setup failed: $LASTEXITCODE." }
+          & '.modkit/bootstrap/scripts/Resolve-ModKit.ps1' `
+            -LockFile 'modkit.lock.json' `
+            -Destination '.modkit/packages' `
+            -PropsOutput '.modkit/generated/ModKit.lock.props'
+          if ($LASTEXITCODE -ne 0) { throw "ModKit resolver failed: $LASTEXITCODE." }
+      - name: Receive and validate frozen candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ steps.evidence.outputs.commit }}
+          EXPECTED_RUN_ID: ${{ steps.evidence.outputs.run-id }}
+          EXPECTED_ARTIFACT_ID: ${{ steps.evidence.outputs.artifact-id }}
+          EXPECTED_ARTIFACT_NAME: ${{ steps.evidence.outputs.artifact-name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          New-Item -ItemType Directory -Path 'artifacts/evidence' | Out-Null
+          & '.modkit/tooling/scripts/Receive-VerifiedArtifact.ps1' `
+            -Repository $env:REPOSITORY `
+            -ArtifactId $env:EXPECTED_ARTIFACT_ID `
+            -ExpectedArtifactName $env:EXPECTED_ARTIFACT_NAME `
+            -ExpectedRunId $env:EXPECTED_RUN_ID `
+            -ExpectedCommit $env:EXPECTED_COMMIT `
+            -ExpectedDigest $env:EXPECTED_ARTIFACT_DIGEST `
+            -ArchivePath 'artifacts/evidence/candidate.zip' `
+            -DestinationDirectory 'artifacts/candidate'
+          if ($LASTEXITCODE -ne 0) { throw "Candidate receiver failed: $LASTEXITCODE." }
+          & '.modkit/tooling/scripts/Test-Candidate.ps1' `
+            -CandidateDirectory 'artifacts/candidate' `
+            -ExpectedCommit $env:EXPECTED_COMMIT `
+            -ExpectedRunId $env:EXPECTED_RUN_ID `
+            -ExpectedArtifactName $env:EXPECTED_ARTIFACT_NAME `
+            -CandidateKind Mod
+          if ($LASTEXITCODE -ne 0) { throw "Candidate verification failed: $LASTEXITCODE." }
+      - name: Rebuild and compare candidate assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'artifacts/rebuild-parent' | Out-Null
+          & '.modkit/tooling/scripts/Invoke-ModBuild.ps1' `
+            -RepositoryRoot '.' -GameApiMode Hosted -Configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Independent rebuild failed: $LASTEXITCODE." }
+          & '.modkit/tooling/scripts/Pack-Mod.ps1' `
+            -RepositoryRoot '.' -Configuration Release -OutputDirectory 'artifacts/rebuild'
+          if ($LASTEXITCODE -ne 0) { throw "Independent repack failed: $LASTEXITCODE." }
+          & '.modkit/tooling/scripts/Test-PublishedAssets.ps1' `
+            -PublishedDirectory 'artifacts/rebuild' `
+            -CandidateDirectory 'artifacts/candidate' `
+            -CandidateKind Mod
+          if ($LASTEXITCODE -ne 0) { throw "Rebuilt assets differ from the frozen candidate: $LASTEXITCODE." }
+      - name: Publish verified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.request.outputs.tag }}
+          EXPECTED_TAG_OBJECT: ${{ steps.evidence.outputs.tag-object }}
+          EXPECTED_COMMIT: ${{ steps.evidence.outputs.commit }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          & '.modkit/tooling/scripts/Publish-VerifiedRelease.ps1' `
+            -Repository $env:REPOSITORY `
+            -ReleaseTag $env:RELEASE_TAG `
+            -ExpectedTagObject $env:EXPECTED_TAG_OBJECT `
+            -ExpectedCommit $env:EXPECTED_COMMIT `
+            -CandidateDirectory 'artifacts/candidate' `
+            -CandidateKind Mod `
+            -WorkingDirectory 'artifacts/release-publication'
+          if ($LASTEXITCODE -ne 0) { throw "Verified release publication failed: $LASTEXITCODE." }

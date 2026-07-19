@@ -16,6 +16,7 @@ $sessionIdentity = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmT
 $runtimeCompatibility = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2.AutoSellMod/RuntimeCompatibility.cs')
 $shopAccessPolicy = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2.AutoSellMod/AutoSellShopAccessPolicy.cs')
 $ciWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github/workflows/ci.yml')
+$releaseWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github/workflows/release.yml')
 $guardFailures = [System.Collections.Generic.List[string]]::new()
 
 function Add-GuardFailure([string]$message) {
@@ -41,6 +42,11 @@ Assert-Match $ciWorkflow '(?s)repository:\s*abmcar/FarmTogether2-ModKit.*?ref:\s
 Assert-Match $ciWorkflow 'Invoke-ModBuild\.ps1' 'AutoSell CI must run the locked ModKit build and tests.'
 Assert-Match $ciWorkflow 'Pack-Mod\.ps1' 'AutoSell CI must package the validated candidate.'
 Assert-Match $ciWorkflow 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' 'AutoSell CI must upload the candidate with the pinned artifact action.'
+Assert-NoMatch $releaseWorkflow 'uses:\s*abmcar/FarmTogether2-ModKit/\.github/workflows/' 'Public AutoSell release must not call a reusable workflow from the private ModKit repository.'
+Assert-Match $releaseWorkflow 'runs-on:\s*windows-2025' 'AutoSell release must run its own trusted Windows publication job.'
+Assert-Match $releaseWorkflow 'Receive-VerifiedArtifact\.ps1' 'AutoSell release must receive the frozen CI candidate through the locked ModKit verifier.'
+Assert-Match $releaseWorkflow 'Test-Candidate\.ps1' 'AutoSell release must validate candidate identity before publication.'
+Assert-Match $releaseWorkflow 'Publish-VerifiedRelease\.ps1' 'AutoSell release must publish through the locked verified-release transaction.'
 
 Assert-Match $plugin 'ExcludedResources.*"GoldNugget"' 'AutoSell must enable Event resources by default.'
 Assert-Match $plugin 'MigrateLegacyExcludedResources\(\)' 'AutoSell must migrate the legacy default exclusion set.'
