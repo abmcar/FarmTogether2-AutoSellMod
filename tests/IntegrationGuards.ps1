@@ -72,7 +72,11 @@ Assert-Match $policy 'MaxNativeInteractionCount\s*=\s*\(uint\)short\.MaxValue' '
 Assert-Match $policy '(?s)possibleInteractions == 0.*?currentAmount >= maxValue.*?currentAmount >= amountPerInteraction' 'Forced full-storage sales must still require enough resources for one native trade.'
 Assert-Match $runtimeCompatibility 'ExpectedGameAssemblySha256' 'AutoSell must fingerprint GameAssembly at runtime.'
 Assert-Match $runtimeCompatibility 'ExpectedGlobalMetadataSha256' 'AutoSell must fingerprint IL2CPP metadata at runtime.'
-Assert-Match $plugin '(?s)if\s*\(!compatibility\.IsCompatible\).*?return\s*;' 'AutoSell must fail closed before adding its behaviour on an unknown runtime.'
+Assert-Match $plugin '(?s)if\s*\(!compatibility\.IsCompatible\)\s*\{.*?Log\.LogWarning.*?\}\s*else' 'AutoSell must warn and continue on an unknown runtime fingerprint.'
+$compatibilityBranch = [regex]::Match($plugin, 'if\s*\(!compatibility\.IsCompatible\)\s*\{(?<body>.*?)\}\s*else', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+if (-not $compatibilityBranch.Success -or $compatibilityBranch.Groups['body'].Value -match '\breturn\s*;') {
+    Add-GuardFailure 'AutoSell fingerprint diagnostics must not disable the whole plugin.'
+}
 Assert-Match $shopAccessPolicy 'class\s+AutoSellShopAccessPolicy' 'AutoSell must provide a game-independent shop access policy.'
 Assert-Match $plugin 'AutoSellShopAccessPolicy\.CanScanShop' 'AutoSell shop collection must use the tested shop access policy.'
 Assert-Match $plugin 'player\.Permissions\s*==\s*PlayerPermissions\.Full' 'AutoSell must bypass the native shop-open check only for full permissions.'
@@ -137,6 +141,9 @@ if ($project -notmatch '<Version>1\.1\.3</Version>') {
 }
 if ($readme -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.3\]') {
     Add-GuardFailure 'README load verification must reference AutoSell version 1.1.3.'
+}
+if ($modConfig.supportedSteamBuild -cne '24184988') {
+    Add-GuardFailure 'AutoSell manifest must target Steam build 24184988.'
 }
 if ($readme -notmatch '奖章.*钻石.*金币') {
     Add-GuardFailure 'README must document AutoSell currency priority.'

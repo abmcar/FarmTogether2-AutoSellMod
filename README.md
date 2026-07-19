@@ -4,7 +4,7 @@ FarmTogether2.AutoSellMod 是 Farm Together 2 的 BepInEx IL2CPP Mod。当前版
 
 ## 支持的游戏版本
 
-当前兼容目标为 Steam build `24184988`。加载时会校验 `GameAssembly.dll` 与 `global-metadata.dat` 的 SHA-256；文件缺失或指纹不符时，插件不会启用出售逻辑。其他 build 尚未纳入兼容性声明。
+当前兼容目标为 Steam build `24184988`。加载时会校验 `GameAssembly.dll` 与 `global-metadata.dat` 的 SHA-256；文件缺失或指纹不符时只记录警告，不再停用整个插件，出售逻辑会继续按当前游戏 API 加载。
 
 ## 前置组件
 
@@ -73,7 +73,7 @@ BepInEx 首次加载插件后会生成配置。源码定义的默认值如下：
 - 只会使用已放置且当前可访问的城镇商店；没有对应商店报价的资源不会自动出售。
 - 不支持 Ticket Trader（`TownFeatureNuggetShop`），也不会自动收集 ticket。
 - 权限受限的玩家仍受游戏原生商店开放状态约束。
-- 游戏更新会使二进制指纹校验失败，出售逻辑保持停用，直到该 build 完成兼容性验证并更新插件。
+- 游戏更新会使二进制指纹诊断产生警告，但不会单独停用出售逻辑；更新后应查看日志并重新验证游戏 API 行为。
 - 联网 RPC 不返回 host 侧的成功或失败状态。城镇交换事件也没有请求 ID 和发起玩家字段。插件只接受当前 `SellResources` 调用内同步出现的事件，并同时核对 session、资源种类、精确数量及 Coins、Bills、Medals；调用异常或没有同步匹配时保留待确认状态。插件不会在超时后自动重试，以免结果未知的请求与新请求重叠。
 - 屏幕提示依赖 Unity IMGUI。提示接口不可用时，Mod 会停用提示渲染；出售逻辑不依赖提示界面。
 

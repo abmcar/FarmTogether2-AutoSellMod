@@ -279,8 +279,24 @@ function Invoke-OwnedPathCleanup([string]$Path) {
     }
     if ($item.PSIsContainer) {
         Assert-DirectoryTreeHasNoReparsePoint $Path 'Resolver-owned cleanup tree'
+        foreach ($filePath in [IO.Directory]::EnumerateFiles(
+            $Path,
+            '*',
+            [IO.SearchOption]::AllDirectories)) {
+            $attributes = [IO.File]::GetAttributes($filePath)
+            if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                [IO.File]::SetAttributes(
+                    $filePath,
+                    $attributes -band (-bnot [IO.FileAttributes]::ReadOnly))
+            }
+        }
         [IO.Directory]::Delete($Path, $true)
     } else {
+        if (($item.Attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+            [IO.File]::SetAttributes(
+                $Path,
+                $item.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly))
+        }
         [IO.File]::Delete($Path)
     }
 }
@@ -365,7 +381,13 @@ foreach ($entry in @(
     Assert-NoReparseAncestor $entry.Path $entry.Label
 }
 $lock = Read-ClosedLock $lockPath
-$nugetPackages = Join-Path $modKitRoot "nuget-packages/$($lock.sha256)"
+$digestBytes = [byte[]]::new($lock.sha256.Length / 2)
+for ($digestIndex = 0; $digestIndex -lt $digestBytes.Length; $digestIndex++) {
+    $digestBytes[$digestIndex] = [Convert]::ToByte($lock.sha256.Substring($digestIndex * 2, 2), 16)
+}
+$digestCacheKey = [Convert]::ToBase64String($digestBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+$localNugetRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ft2n'
+$nugetPackages = Join-Path $localNugetRoot $digestCacheKey
 Assert-NoReparseAncestor $nugetPackages 'Digest-keyed NuGet package cache'
 $lockHash = (Get-FileHash -LiteralPath $lockPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $initialRelease = Get-ReleaseSnapshot $lock

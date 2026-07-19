@@ -51,20 +51,28 @@ namespace FarmTogether2.AutoSellMod
 
             try
             {
-                RuntimeCompatibilityResult compatibility = RuntimeCompatibility.VerifyCurrentGame(
-                    Paths.GameRootPath,
-                    Paths.GameDataPath);
-                if (!compatibility.IsCompatible)
+                try
                 {
-                    Log.LogError(
-                        $"[autosell] Plugin disabled: runtime compatibility check failed: {compatibility.Message}. " +
-                        $"Expected Steam build {RuntimeCompatibility.SupportedSteamBuild}.");
-                    if (!TryReleaseRuntimeLease())
-                        throw new InvalidOperationException("Could not release the unused AutoSell runtime lease.");
-                    return;
+                    RuntimeCompatibilityResult compatibility = RuntimeCompatibility.VerifyCurrentGame(
+                        Paths.GameRootPath,
+                        Paths.GameDataPath);
+                    if (!compatibility.IsCompatible)
+                    {
+                        Log.LogWarning(
+                            $"[autosell] Runtime fingerprint diagnostic: {compatibility.Message}. " +
+                            $"Expected Steam build {RuntimeCompatibility.SupportedSteamBuild}; continuing with API-level activation.");
+                    }
+                    else
+                    {
+                        Log.LogInfo($"[autosell] Runtime compatibility check passed: {compatibility.Message}.");
+                    }
                 }
-
-                Log.LogInfo($"[autosell] Runtime compatibility check passed: {compatibility.Message}.");
+                catch (Exception failure)
+                {
+                    Log.LogWarning(
+                        $"[autosell] Runtime fingerprint diagnostic was unavailable: " +
+                        $"{failure.GetType().Name}: {failure.Message}. Continuing with API-level activation.");
+                }
 
                 Enabled = Config.Bind("General", "Enabled", true,
                     "Master switch for automatic resource selling.");

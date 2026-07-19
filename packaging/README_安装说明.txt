@@ -3,7 +3,7 @@ FarmTogether2.AutoSellMod 1.1.3 安装说明
 兼容性
 1. 本发布包的兼容目标为 Steam build 24184988。
 2. 插件加载时会校验 GameAssembly.dll 与 global-metadata.dat。文件缺失或
-   指纹不符时，自动出售保持停用，并在 BepInEx 日志中记录原因。
+   指纹不符时只在 BepInEx 日志中记录警告，不会单独停用自动出售。
 
 前置条件
 1. 安装 BepInEx Unity IL2CPP 6.0.0-be.755+3fab71a。
