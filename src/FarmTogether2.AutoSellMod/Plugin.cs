@@ -4,7 +4,6 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
-using Core;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.Attributes;
 using Logic;
@@ -732,9 +731,6 @@ namespace FarmTogether2.AutoSellMod
                 amountPerInteraction,
                 remainingUses,
                 Plugin.SellOneTradeWhenFull.Value);
-            interactionCount = AutoSellPolicy.LimitInteractionCountForExecution(
-                interactionCount,
-                StageParameters.IsOnline);
             if (interactionCount == 0)
                 return null;
 

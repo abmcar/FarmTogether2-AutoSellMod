@@ -140,17 +140,5 @@ namespace FarmTogether2.AutoSellMod
                 : (uint)possibleInteractions;
             return count > remainingUses ? remainingUses : count;
         }
-
-        internal static uint LimitInteractionCountForExecution(
-            uint interactionCount,
-            bool limitToSingleInteraction)
-        {
-            uint transportSafeCount = interactionCount > MaxNativeInteractionCount
-                ? MaxNativeInteractionCount
-                : interactionCount;
-            return limitToSingleInteraction && transportSafeCount > 0
-                ? 1u
-                : transportSafeCount;
-        }
     }
 }

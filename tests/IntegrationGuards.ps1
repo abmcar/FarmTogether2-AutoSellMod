@@ -63,8 +63,8 @@ Assert-NoMatch $plugin '_pendingSales\.TryConfirm|TryCommitObservedConfirmation'
 Assert-Match $plugin '(?s)FarmMoney currentMoneyPerInteraction\s*=\s*candidate\.Shop\.GetSellMoney_Resource\(candidate\.ResourceSlotIndex\);.*?ValidateMultiplicationRange\(interactionCount\);.*?AutoSellNativeMoneyProjection\.Project\(.*?currentMoneyPerInteraction \* multiplier;.*?new AutoSellMoneySignature\(\s*nativeExpectedMoney\.Coins,\s*nativeExpectedMoney\.Bills,\s*nativeExpectedMoney\.Medals\)' 'AutoSell must re-read current money immediately before dispatch, validate its mathematical range, and use the game native Single multiplication result for the confirmation signature.'
 Assert-NoMatch $plugin 'candidate\.MoneyPerInteraction|readonly AutoSellMoneySignature MoneyPerInteraction|CheckedMultiply' 'AutoSell must not use stale candidate money or Int64 multiplication for the native confirmation signature.'
 Assert-NoMatch $dispatchObservation 'CheckedMultiply' 'The managed dispatch signature must not model FarmMoney native multiplication as checked Int64 arithmetic.'
-Assert-Match $plugin 'AutoSellPolicy\.LimitInteractionCountForExecution' 'AutoSell must use the tested online and transport count limit.'
-Assert-Match $plugin 'StageParameters\.IsOnline' 'AutoSell must limit online requests separately from synchronous offline requests.'
+Assert-NoMatch $plugin 'StageParameters\.IsOnline|LimitInteractionCountForExecution' 'AutoSell must not impose an artificial one-trade limit on online batches.'
+Assert-NoMatch $policy 'LimitInteractionCountForExecution|limitToSingleInteraction' 'AutoSell policy must not restore the artificial online batch limit.'
 Assert-NoMatch $plugin 'TryReleaseForRetry|LateSuccessEventGraceSeconds|\bisRetry\b' 'AutoSell must not retry requests whose result is uncertain.'
 Assert-Match $pendingTracker 'IsUncertain' 'AutoSell pending state must expose a tested uncertain state after timeout.'
 Assert-NoMatch $pendingTracker 'RetryAt|TryReleaseForRetry' 'AutoSell pending state must not have an automatic retry transition.'
@@ -132,11 +132,11 @@ $project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2
 $readme = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'README.md')
 $modConfig = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'mod.json') | ConvertFrom-Json
 
-if ($project -notmatch '<Version>1\.1\.1</Version>') {
-    Add-GuardFailure 'AutoSell repair release must be version 1.1.1.'
+if ($project -notmatch '<Version>1\.1\.3</Version>') {
+    Add-GuardFailure 'AutoSell release must be version 1.1.3.'
 }
-if ($readme -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.1\]') {
-    Add-GuardFailure 'README load verification must reference AutoSell version 1.1.1.'
+if ($readme -notmatch 'Loading \[FarmTogether2\.AutoSellMod 1\.1\.3\]') {
+    Add-GuardFailure 'README load verification must reference AutoSell version 1.1.3.'
 }
 if ($readme -notmatch '奖章.*钻石.*金币') {
     Add-GuardFailure 'README must document AutoSell currency priority.'

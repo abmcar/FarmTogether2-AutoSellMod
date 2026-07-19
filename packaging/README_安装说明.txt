@@ -1,7 +1,7 @@
-FarmTogether2.AutoSellMod 1.1.1 安装说明
+FarmTogether2.AutoSellMod 1.1.3 安装说明
 
 兼容性
-1. 本发布包的兼容目标为 Steam build 24069957。
+1. 本发布包的兼容目标为 Steam build 24184988。
 2. 插件加载时会校验 GameAssembly.dll 与 global-metadata.dat。文件缺失或
    指纹不符时，自动出售保持停用，并在 BepInEx 日志中记录原因。
 
@@ -19,7 +19,7 @@ FarmTogether2.AutoSellMod 1.1.1 安装说明
 3. 确认最终文件为：
    BepInEx/plugins/FarmTogether2.AutoSellMod/FarmTogether2.AutoSellMod.dll
 4. 启动游戏，并在 BepInEx 日志中确认：
-   Loading [FarmTogether2.AutoSellMod 1.1.1]
+   Loading [FarmTogether2.AutoSellMod 1.1.3]
 
 运行说明
 1. 联网出售请求在 15 秒内没有收到匹配确认时，会进入结果未知状态。

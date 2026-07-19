@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AssemblyName>FarmTogether2.AutoSellMod</AssemblyName>
     <Product>FarmTogether2.AutoSellMod</Product>
-    <Version>1.1.1</Version>
+    <Version>1.1.3</Version>
     <IsFarmTogether2Plugin>true</IsFarmTogether2Plugin>
     <BepInExPluginGuid>com.abmcar.farmtogether2.autosellmod</BepInExPluginGuid>
     <BepInExPluginName>FarmTogether2.AutoSellMod</BepInExPluginName>
