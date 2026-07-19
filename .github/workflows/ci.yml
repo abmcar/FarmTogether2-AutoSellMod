@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: windows-2025
     permissions:
       contents: read
@@ -23,12 +22,11 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
-      - name: Check out locked private ModKit bootstrap
+      - name: Check out locked public ModKit bootstrap
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          repository: abmcar/FarmTogether2-ModKit
+          repository: abmcar-ft2-mods/FarmTogether2-ModKit
           ref: f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c
-          token: ${{ secrets.MODKIT_READ_TOKEN }}
           path: .modkit/bootstrap
           persist-credentials: false
       - name: Set up locked .NET SDK
@@ -56,7 +54,7 @@ jobs:
       - name: Resolve locked ModKit package and tooling
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.MODKIT_READ_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           & gh auth setup-git --hostname github.com
           if ($LASTEXITCODE -ne 0) {

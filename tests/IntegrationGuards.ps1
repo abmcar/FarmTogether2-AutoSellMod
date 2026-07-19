@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 [CmdletBinding()]
 param()
 
@@ -35,14 +35,15 @@ function Assert-NoMatch([string]$source, [string]$pattern, [string]$message) {
     }
 }
 
-Assert-NoMatch $ciWorkflow 'uses:\s*abmcar/FarmTogether2-ModKit/\.github/workflows/' 'Public AutoSell CI must not call a reusable workflow from the private ModKit repository.'
+Assert-NoMatch $ciWorkflow 'uses:\s*abmcar-ft2-mods/FarmTogether2-ModKit/\.github/workflows/' 'AutoSell CI must retain its repository-local trusted build contract.'
 Assert-Match $ciWorkflow 'runs-on:\s*windows-2025' 'AutoSell CI must run its own trusted Windows build job.'
-Assert-Match $ciWorkflow 'github\.event_name != ''pull_request'' \|\| github\.event\.pull_request\.head\.repo\.full_name == github\.repository' 'AutoSell CI must not expose private ModKit credentials to fork pull requests.'
-Assert-Match $ciWorkflow '(?s)repository:\s*abmcar/FarmTogether2-ModKit.*?ref:\s*f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c.*?token:\s*\$\{\{ secrets\.MODKIT_READ_TOKEN \}\}' 'AutoSell CI must check out the exact locked private ModKit commit with the repository secret.'
+Assert-NoMatch $ciWorkflow 'MODKIT_READ_TOKEN' 'Public AutoSell CI must not depend on a private-repository credential.'
+Assert-Match $ciWorkflow '(?s)repository:\s*abmcar-ft2-mods/FarmTogether2-ModKit.*?ref:\s*f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c.*?path:\s*\.modkit/bootstrap' 'AutoSell CI must check out the exact locked public ModKit commit.'
 Assert-Match $ciWorkflow 'Invoke-ModBuild\.ps1' 'AutoSell CI must run the locked ModKit build and tests.'
 Assert-Match $ciWorkflow 'Pack-Mod\.ps1' 'AutoSell CI must package the validated candidate.'
 Assert-Match $ciWorkflow 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' 'AutoSell CI must upload the candidate with the pinned artifact action.'
-Assert-NoMatch $releaseWorkflow 'uses:\s*abmcar/FarmTogether2-ModKit/\.github/workflows/' 'Public AutoSell release must not call a reusable workflow from the private ModKit repository.'
+Assert-NoMatch $releaseWorkflow 'uses:\s*abmcar-ft2-mods/FarmTogether2-ModKit/\.github/workflows/' 'AutoSell release must retain its repository-local trusted publication contract.'
+Assert-NoMatch $releaseWorkflow 'MODKIT_READ_TOKEN' 'Public AutoSell release must not depend on a private-repository credential.'
 Assert-Match $releaseWorkflow 'runs-on:\s*windows-2025' 'AutoSell release must run its own trusted Windows publication job.'
 Assert-Match $releaseWorkflow 'Receive-VerifiedArtifact\.ps1' 'AutoSell release must receive the frozen CI candidate through the locked ModKit verifier.'
 Assert-Match $releaseWorkflow 'Test-Candidate\.ps1' 'AutoSell release must validate candidate identity before publication.'

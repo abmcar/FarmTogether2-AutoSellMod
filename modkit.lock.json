@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "repository": "abmcar/FarmTogether2-ModKit",
+  "repository": "abmcar-ft2-mods/FarmTogether2-ModKit",
   "workflowCommit": "f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c",
   "packageId": "FarmTogether2.GameApi.Ref",
   "packageVersion": "1.0.1",
