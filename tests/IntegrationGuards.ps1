@@ -15,6 +15,7 @@ $runtimeLease = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmToge
 $sessionIdentity = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2.AutoSellMod/AutoSellSessionIdentity.cs')
 $runtimeCompatibility = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2.AutoSellMod/RuntimeCompatibility.cs')
 $shopAccessPolicy = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src/FarmTogether2.AutoSellMod/AutoSellShopAccessPolicy.cs')
+$ciWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github/workflows/ci.yml')
 $guardFailures = [System.Collections.Generic.List[string]]::new()
 
 function Add-GuardFailure([string]$message) {
@@ -32,6 +33,14 @@ function Assert-NoMatch([string]$source, [string]$pattern, [string]$message) {
         Add-GuardFailure $message
     }
 }
+
+Assert-NoMatch $ciWorkflow 'uses:\s*abmcar/FarmTogether2-ModKit/\.github/workflows/' 'Public AutoSell CI must not call a reusable workflow from the private ModKit repository.'
+Assert-Match $ciWorkflow 'runs-on:\s*windows-2025' 'AutoSell CI must run its own trusted Windows build job.'
+Assert-Match $ciWorkflow 'github\.event_name != ''pull_request'' \|\| github\.event\.pull_request\.head\.repo\.full_name == github\.repository' 'AutoSell CI must not expose private ModKit credentials to fork pull requests.'
+Assert-Match $ciWorkflow '(?s)repository:\s*abmcar/FarmTogether2-ModKit.*?ref:\s*f54dc63e4d9a5cc466a6c68f8da77c4c250f9e2c.*?token:\s*\$\{\{ secrets\.MODKIT_READ_TOKEN \}\}' 'AutoSell CI must check out the exact locked private ModKit commit with the repository secret.'
+Assert-Match $ciWorkflow 'Invoke-ModBuild\.ps1' 'AutoSell CI must run the locked ModKit build and tests.'
+Assert-Match $ciWorkflow 'Pack-Mod\.ps1' 'AutoSell CI must package the validated candidate.'
+Assert-Match $ciWorkflow 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' 'AutoSell CI must upload the candidate with the pinned artifact action.'
 
 Assert-Match $plugin 'ExcludedResources.*"GoldNugget"' 'AutoSell must enable Event resources by default.'
 Assert-Match $plugin 'MigrateLegacyExcludedResources\(\)' 'AutoSell must migrate the legacy default exclusion set.'
